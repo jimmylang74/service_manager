@@ -86,6 +86,14 @@ func (l *linuxManager) Run(name string, handler func() error) error {
 	return handler()
 }
 
+func (l *linuxManager) Start(name string) error {
+	return exec.Command("systemctl", "start", name+".service").Run()
+}
+
+func (l *linuxManager) Stop(name string) error {
+	return exec.Command("systemctl", "stop", name+".service").Run()
+}
+
 func (l *linuxManager) SetConfigPath(name, path string) error {
 	return os.WriteFile(l.configStorePath(name), []byte(path), 0644)
 }

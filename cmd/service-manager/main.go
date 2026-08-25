@@ -67,7 +67,14 @@ func runDaemon(configPath string, portOverride int) {
 			fmt.Fprintf(os.Stderr, "auto-register failed: %v\n", err)
 		} else {
 			_ = pm.SetConfigPath(serviceName, configPath)
-			fmt.Printf("service '%s' registered successfully\n", serviceName)
+			fmt.Printf("service '%s' registered\n", serviceName)
+			if err := pm.Start(serviceName); err != nil {
+				fmt.Fprintf(os.Stderr, "auto-start failed: %v\n", err)
+			} else {
+				fmt.Printf("service '%s' started\n", serviceName)
+			}
+			fmt.Println("this process will now exit; manage via web UI or 'sc' commands")
+			return
 		}
 	}
 

@@ -51,10 +51,15 @@ func (w *windowsManager) IsRegistered(name string) (bool, error) {
 }
 
 func (w *windowsManager) Run(name string, handler func() error) error {
-	// In SCM mode, we'd normally use golang.org/x/sys/windows/svc.
-	// For simplicity in the initial implementation, we run the handler directly.
-	// A production implementation would integrate with Windows SCM via mcrixt/servicemgr or x/sys.
 	return handler()
+}
+
+func (w *windowsManager) Start(name string) error {
+	return runCommand("sc.exe", "start", name)
+}
+
+func (w *windowsManager) Stop(name string) error {
+	return runCommand("sc.exe", "stop", name)
 }
 
 func (w *windowsManager) SetConfigPath(name, path string) error {
