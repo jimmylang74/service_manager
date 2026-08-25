@@ -14,6 +14,12 @@ import (
 	"service-manager/internal/platform"
 )
 
+const defaultConfigContent = `web_port: 7070
+log_dir: ./logs
+
+services: []
+`
+
 const (
 	serviceName        = "service-manager"
 	serviceDisplayName = "Service Manager"
@@ -50,6 +56,20 @@ func main() {
 }
 
 func runDaemon(configPath string, portOverride int) {
+	ensureConfig(configPath)
+
+	pm := platform.New()
+	registered, _ := pm.IsRegistered(serviceName)
+	if !registered {
+		fmt.Println("first run detected, registering as system service...")
+		if err := pm.Register(serviceName, serviceDisplayName, serviceDescription); err != nil {
+			fmt.Fprintf(os.Stderr, "auto-register failed: %v\n", err)
+		} else {
+			_ = pm.SetConfigPath(serviceName, configPath)
+			fmt.Printf("service '%s' registered successfully\n", serviceName)
+		}
+	}
+
 	loader := config.NewLoader(configPath)
 	mgr, err := manager.New(loader)
 	if err != nil {
@@ -149,11 +169,27 @@ Actions:
   register          Register as system service (Windows SCM / Linux systemd)
   uninstall         Unregister system service
   status            Show service registration status
-  (no action)       Run as daemon with web UI
+  (no action)       Run as daemon with web UI (auto-registers on first run)
 
 Examples:
   %s -action register -config /path/to/config.yaml
   %s -port 8080
   %s -action uninstall
 `, os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+}
+
+func ensureConfig(path string) {
+	if _, err := os.Stat(path); err == nil {
+		return
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot create config directory: %v\n", err)
+		return
+	}
+	if err := os.WriteFile(path, []byte(defaultConfigContent), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot create config file: %v\n", err)
+		return
+	}
+	fmt.Printf("created default config: %s\n", path)
 }
