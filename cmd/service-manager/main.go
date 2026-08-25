@@ -29,14 +29,18 @@ const (
 
 func main() {
 	var (
-		action    string
+		uninstall bool
+		status    bool
+		install   bool
 		configPtr string
 		portPtr   int
 	)
 
-	flag.StringVar(&action, "action", "", "register|uninstall|status")
-	flag.StringVar(&configPtr, "config", "", "path to config file")
-	flag.IntVar(&portPtr, "port", 0, "override web port")
+	flag.BoolVar(&uninstall, "uninstall", false, "unregister and remove the system service")
+	flag.BoolVar(&status, "status", false, "show service registration status")
+	flag.BoolVar(&install, "install", false, "force re-register the system service")
+	flag.StringVar(&configPtr, "config", "", "path to config file (default: <exe_dir>/config.yaml)")
+	flag.IntVar(&portPtr, "port", 0, "override web server port")
 	flag.Usage = printUsage
 	flag.Parse()
 
@@ -44,13 +48,13 @@ func main() {
 		configPtr = defaultConfigPath()
 	}
 
-	switch action {
-	case "register":
-		handleRegister(configPtr)
-	case "uninstall":
+	switch {
+	case uninstall:
 		handleUninstall()
-	case "status":
+	case status:
 		handleStatus()
+	case install:
+		handleInstall(configPtr)
 	default:
 		runDaemon(configPtr, portPtr)
 	}
@@ -73,7 +77,7 @@ func runDaemon(configPath string, portOverride int) {
 			} else {
 				fmt.Printf("service '%s' started\n", serviceName)
 			}
-			fmt.Println("this process will now exit; manage via web UI or 'sc' commands")
+			fmt.Println("this process will now exit; manage via web UI or system service commands")
 			return
 		}
 	}
@@ -122,7 +126,8 @@ func runDaemon(configPath string, portOverride int) {
 	mgr.Stop()
 }
 
-func handleRegister(configPath string) {
+func handleInstall(configPath string) {
+	ensureConfig(configPath)
 	pm := platform.New()
 	registered, _ := pm.IsRegistered(serviceName)
 	if registered {
@@ -176,21 +181,25 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, `Usage: %s [options]
 
 Options:
-  -action string    Action: register, uninstall, status (default: run daemon)
-  -config string    Path to config file (default: <exe_dir>/config.yaml)
-  -port int         Override web server port
+  -uninstall        unregister and remove the system service
+  -status           show service registration status
+  -install          force re-register the system service
+  -config string    path to config file (default: <exe_dir>/config.yaml)
+  -port int         override web server port
 
-Actions:
-  register          Register as system service (Windows SCM / Linux systemd)
-  uninstall         Unregister system service
-  status            Show service registration status
-  (no action)       Run as daemon with web UI (auto-registers on first run)
+Behavior:
+  (no flags)        first run: register + start service + exit
+                    subsequent runs: start daemon with web UI
+  -install          register service without starting it
+  -uninstall        stop and remove the service
 
 Examples:
-  %s -action register -config /path/to/config.yaml
-  %s -port 8080
-  %s -action uninstall
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+  %s                              # first run or start daemon
+  %s -install -config ./cfg.yaml  # register with custom config
+  %s -port 8080                   # override web port
+  %s -status                      # check if registered
+  %s -uninstall                   # remove service
+`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 }
 
 func ensureConfig(path string) {
