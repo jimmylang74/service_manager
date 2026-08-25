@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -90,6 +91,13 @@ func runDaemon(configPath string, portOverride int) {
 	}
 
 	srv := api.New(mgr, fmt.Sprintf(":%d", port))
+
+	if ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port)); err != nil {
+		fmt.Fprintf(os.Stderr, "port %d is already in use - service-manager may already be running\n", port)
+		os.Exit(1)
+	} else {
+		ln.Close()
+	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
