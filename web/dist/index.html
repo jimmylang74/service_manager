@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Manager</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0f1117;
+            --bg-card: #1a1d27;
+            --bg-hover: #242836;
+            --border: #2a2e3a;
+            --text: #e4e6ed;
+            --text-muted: #8b8fa3;
+            --accent: #6c5ce7;
+            --accent-hover: #7c6ff7;
+            --green: #00b894;
+            --red: #e74c3c;
+            --orange: #f39c12;
+            --blue: #3498db;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        .header {
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+        .header-actions { display: flex; gap: 12px; align-items: center; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0;
+        }
+        .tab {
+            padding: 12px 20px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            transition: all 0.2s;
+        }
+        .tab:hover { color: var(--text); }
+        .tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 16px;
+        }
+        .service-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            transition: border-color 0.2s;
+        }
+        .service-card:hover { border-color: var(--accent); }
+        .service-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .service-name {
+            font-size: 16px;
+            font-weight: 600;
+        }
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+        .status-running { background: rgba(0,184,148,0.15); color: var(--green); }
+        .status-stopped { background: rgba(231,76,60,0.15); color: var(--red); }
+        .status-error { background: rgba(243,156,18,0.15); color: var(--orange); }
+        .status-starting { background: rgba(52,152,219,0.15); color: var(--blue); }
+        .service-meta {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+        }
+        .service-meta div { margin-bottom: 4px; }
+        .service-actions { display: flex; gap: 8px; }
+        .btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: none;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-success { background: var(--green); color: white; }
+        .btn-success:hover { opacity: 0.9; }
+        .btn-danger { background: var(--red); color: white; }
+        .btn-danger:hover { opacity: 0.9; }
+        .btn-secondary { background: var(--bg-hover); color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { border-color: var(--accent); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .log-viewer {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .log-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .log-header h3 { font-size: 15px; font-weight: 600; }
+        .log-controls { display: flex; gap: 8px; align-items: center; }
+        .log-content {
+            padding: 16px 20px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            max-height: 500px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .log-line { padding: 2px 0; }
+        .log-line:hover { background: var(--bg-hover); }
+
+        .config-editor {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .config-editor h3 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+        .config-editor textarea {
+            width: 100%;
+            min-height: 400px;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            resize: vertical;
+        }
+        .config-editor textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .config-actions {
+            margin-top: 16px;
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .port-config {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 16px;
+            max-width: 400px;
+        }
+        .port-config h3 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+        .port-input {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .port-input input {
+            width: 120px;
+            padding: 8px 12px;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .port-input input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+        .notification.success { background: var(--green); color: white; }
+        .notification.error { background: var(--red); color: white; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        .empty-state h3 { margin-bottom: 8px; font-size: 18px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Service Manager</h1>
+        <div class="header-actions">
+            <span id="connectionStatus" style="font-size: 13px; color: var(--text-muted);">Connecting...</span>
+        </div>
+    </div>
+    <div class="container">
+        <div class="tabs">
+            <button type="button" class="tab active" data-tab="services">Services</button>
+            <button type="button" class="tab" data-tab="logs">Logs</button>
+            <button type="button" class="tab" data-tab="config">Configuration</button>
+        </div>
+
+        <div id="services" class="tab-content active">
+            <div class="services-grid" id="servicesGrid"></div>
+        </div>
+
+        <div id="logs" class="tab-content">
+            <div class="log-viewer">
+                <div class="log-header">
+                    <h3>Live Logs</h3>
+                    <div class="log-controls">
+                        <select id="logServiceSelect" style="padding: 6px 12px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+                            <option value="manager">Manager</option>
+                        </select>
+                        <button type="button" class="btn btn-secondary" onclick="clearLogs()">Clear</button>
+                        <label style="font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                            <input type="checkbox" id="autoScroll" checked> Auto-scroll
+                        </label>
+                    </div>
+                </div>
+                <div class="log-content" id="logContent"></div>
+            </div>
+        </div>
+
+        <div id="config" class="tab-content">
+            <div class="config-editor">
+                <h3>Configuration (YAML)</h3>
+                <textarea id="configEditor" spellcheck="false"></textarea>
+                <div class="config-actions">
+                    <button type="button" class="btn btn-secondary" onclick="loadConfig()">Reload</button>
+                    <button type="button" class="btn btn-primary" onclick="saveConfig()">Save & Apply</button>
+                </div>
+            </div>
+            <div class="port-config">
+                <h3>Web Port</h3>
+                <div class="port-input">
+                    <input type="number" id="portInput" min="1" max="65535" value="7070">
+                    <button type="button" class="btn btn-primary" onclick="updatePort()">Update Port</button>
+                </div>
+                <p style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">Restart required to apply new port</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = '';
+        let eventSource = null;
+
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.tab).classList.add('active');
+                if (tab.dataset.tab === 'logs') startLogStream();
+                else stopLogStream();
+                if (tab.dataset.tab === 'config') loadConfig();
+            });
+        });
+
+        async function api(path, opts = {}) {
+            const resp = await fetch(API + path, {
+                headers: { 'Content-Type': 'application/json' },
+                ...opts
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            return resp.json();
+        }
+
+        async function loadServices() {
+            try {
+                const data = await api('/api/services');
+                const grid = document.getElementById('servicesGrid');
+                if (!data.services || data.services.length === 0) {
+                    grid.innerHTML = '<div class="empty-state"><h3>No services configured</h3><p>Add services to config.yaml</p></div>';
+                    return;
+                }
+                grid.innerHTML = data.services.map(svc => `
+                    <div class="service-card">
+                        <div class="service-header">
+                            <span class="service-name">${svc.name}</span>
+                            <span class="status-badge status-${svc.status}">${svc.status}</span>
+                        </div>
+                        <div class="service-meta">
+                            <div>PID: ${svc.pid || 'N/A'}</div>
+                            ${svc.start_time ? `<div>Started: ${svc.start_time}</div>` : ''}
+                            ${svc.uptime ? `<div>Uptime: ${svc.uptime}</div>` : ''}
+                        </div>
+                        <div class="service-actions">
+                            <button type="button" class="btn btn-success" onclick="serviceAction('${svc.name}', 'start')" ${svc.status === 'running' ? 'disabled' : ''}>Start</button>
+                            <button type="button" class="btn btn-danger" onclick="serviceAction('${svc.name}', 'stop')" ${svc.status !== 'running' ? 'disabled' : ''}>Stop</button>
+                            <button type="button" class="btn btn-secondary" onclick="serviceAction('${svc.name}', 'restart')">Restart</button>
+                        </div>
+                    </div>
+                `).join('');
+                updateLogSelect(data.services);
+            } catch (e) {
+                console.error('loadServices:', e);
+            }
+        }
+
+        function updateLogSelect(services) {
+            const sel = document.getElementById('logServiceSelect');
+            const current = sel.value;
+            sel.innerHTML = '<option value="manager">Manager</option>';
+            services.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.name;
+                opt.textContent = s.name;
+                sel.appendChild(opt);
+            });
+            sel.value = current;
+        }
+
+        async function serviceAction(name, action) {
+            try {
+                await api(`/api/services/${name}/${action}`, { method: 'POST' });
+                notify(`${action}ed ${name}`, 'success');
+                setTimeout(loadServices, 500);
+            } catch (e) {
+                notify(`Failed to ${action} ${name}: ${e.message}`, 'error');
+            }
+        }
+
+        function startLogStream() {
+            stopLogStream();
+            const service = document.getElementById('logServiceSelect').value;
+            const endpoint = service === 'manager' ? '/api/manager/logs/stream' : `/api/services/${service}/logs/stream`;
+            eventSource = new EventSource(API + endpoint);
+            eventSource.onmessage = (e) => {
+                const el = document.getElementById('logContent');
+                const lines = e.data.split('\n').filter(l => l.trim());
+                lines.forEach(line => {
+                    const div = document.createElement('div');
+                    div.className = 'log-line';
+                    div.textContent = line;
+                    el.appendChild(div);
+                });
+                if (document.getElementById('autoScroll').checked) {
+                    el.scrollTop = el.scrollHeight;
+                }
+            };
+            eventSource.onerror = () => {
+                document.getElementById('connectionStatus').textContent = 'Disconnected';
+                document.getElementById('connectionStatus').style.color = 'var(--red)';
+            };
+            eventSource.onopen = () => {
+                document.getElementById('connectionStatus').textContent = 'Connected';
+                document.getElementById('connectionStatus').style.color = 'var(--green)';
+            };
+        }
+
+        function stopLogStream() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('logContent').innerHTML = '';
+        }
+
+        document.getElementById('logServiceSelect').addEventListener('change', () => {
+            if (document.getElementById('logs').classList.contains('active')) {
+                clearLogs();
+                startLogStream();
+            }
+        });
+
+        async function loadConfig() {
+            try {
+                const data = await api('/api/config');
+                document.getElementById('configEditor').value = yamlStringify(data);
+                document.getElementById('portInput').value = data.web_port || 7070;
+            } catch (e) {
+                console.error('loadConfig:', e);
+            }
+        }
+
+        async function saveConfig() {
+            try {
+                const text = document.getElementById('configEditor').value;
+                const data = yamlParse(text);
+                await api('/api/config', { method: 'PUT', body: JSON.stringify(data) });
+                notify('Configuration saved and applied', 'success');
+                loadServices();
+            } catch (e) {
+                notify(`Failed to save: ${e.message}`, 'error');
+            }
+        }
+
+        async function updatePort() {
+            const port = parseInt(document.getElementById('portInput').value);
+            if (!port || port < 1 || port > 65535) {
+                notify('Invalid port number', 'error');
+                return;
+            }
+            try {
+                await api('/api/config/port', { method: 'PUT', body: JSON.stringify({ port }) });
+                notify(`Port updated to ${port}. Restart required.`, 'success');
+            } catch (e) {
+                notify(`Failed to update port: ${e.message}`, 'error');
+            }
+        }
+
+        function notify(msg, type) {
+            const el = document.createElement('div');
+            el.className = `notification ${type}`;
+            el.textContent = msg;
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 3000);
+        }
+
+        function yamlStringify(obj) {
+            let yaml = '';
+            for (const [key, val] of Object.entries(obj)) {
+                if (key === 'services') {
+                    yaml += 'services:\n';
+                    (val || []).forEach(svc => {
+                        yaml += '  - name: ' + svc.name + '\n';
+                        yaml += '    executable: ' + (svc.executable || '') + '\n';
+                        if (svc.arguments && svc.arguments.length) {
+                            yaml += '    arguments:\n';
+                            svc.arguments.forEach(a => yaml += '      - ' + JSON.stringify(a) + '\n');
+                        }
+                        if (svc.working_directory) yaml += '    working_directory: ' + svc.working_directory + '\n';
+                        if (svc.environment && Object.keys(svc.environment).length) {
+                            yaml += '    environment:\n';
+                            for (const [k, v] of Object.entries(svc.environment)) {
+                                yaml += '      ' + k + ': ' + v + '\n';
+                            }
+                        }
+                        if (svc.restart) {
+                            yaml += '    restart:\n';
+                            yaml += '      policy: ' + (svc.restart.policy || 'on-failure') + '\n';
+                            yaml += '      delay_seconds: ' + (svc.restart.delay_seconds || 5) + '\n';
+                            yaml += '      max_retries: ' + (svc.restart.max_retries || 10) + '\n';
+                        }
+                    });
+                } else {
+                    yaml += key + ': ' + JSON.stringify(val) + '\n';
+                }
+            }
+            return yaml;
+        }
+
+        function yamlParse(text) {
+            const result = { services: [] };
+            let current = null;
+            let inServices = false;
+            let section = '';
+
+            for (const raw of text.split('\n')) {
+                const line = raw.replace(/\r$/, '');
+                if (line.trim().startsWith('#') || !line.trim()) continue;
+
+                if (/^services:/.test(line)) { inServices = true; continue; }
+                if (/^\w/.test(line) && !line.startsWith(' ')) {
+                    inServices = false;
+                    const m = line.match(/^(\w+):\s*(.*)$/);
+                    if (m) {
+                        result[m[1]] = isNaN(m[2]) ? m[2] : Number(m[2]);
+                        section = '';
+                    }
+                    continue;
+                }
+
+                if (inServices) {
+                    const trimmed = line.trim();
+                    if (trimmed.startsWith('- name:')) {
+                        if (current) result.services.push(current);
+                        current = { name: trimmed.split(':').slice(1).join(':').trim(), arguments: [], environment: {} };
+                        section = '';
+                        continue;
+                    }
+                    if (!current) continue;
+                    const kv = trimmed.match(/^(\w+):\s*(.*)$/);
+                    if (!kv) continue;
+                    const [, k, v] = kv;
+                    if (k === 'name') current.name = v;
+                    else if (k === 'executable') current.executable = v;
+                    else if (k === 'working_directory') current.working_directory = v;
+                    else if (k === 'policy') current.restart = current.restart || {}, current.restart.policy = v;
+                    else if (k === 'delay_seconds') current.restart = current.restart || {}, current.restart.delay_seconds = Number(v);
+                    else if (k === 'max_retries') current.restart = current.restart || {}, current.restart.max_retries = Number(v);
+                    else if (k === 'restart') section = 'restart';
+                    else if (k === 'arguments') section = 'arguments';
+                    else if (k === 'environment') section = 'environment';
+                    else if (trimmed.startsWith('- ') && section === 'arguments') {
+                        current.arguments.push(trimmed.slice(2).replace(/^["']|["']$/g, ''));
+                    } else if (k && section === 'environment') {
+                        current.environment[k] = v;
+                    }
+                }
+            }
+            if (current) result.services.push(current);
+            return result;
+        }
+
+        loadServices();
+        setInterval(loadServices, 5000);
+    </script>
+</body>
+</html>

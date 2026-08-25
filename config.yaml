@@ -1,0 +1,15 @@
+web_port: 7070
+log_dir: ./logs
+
+services:
+  - name: echo-test
+    executable: /bin/echo
+    arguments:
+      - "hello from service-manager"
+    working_directory: /tmp
+    environment:
+      TEST_ENV: development
+    restart:
+      policy: on-failure
+      delay_seconds: 5
+      max_retries: 3

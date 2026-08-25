@@ -1,0 +1,17 @@
+web_port: 7070
+log_dir: ./logs
+
+services:
+  - name: helix-agent
+    executable: C:\Python312\python.exe
+    arguments:
+      - C:\Helix\main.py
+      - --port
+      - "8000"
+    working_directory: C:\Helix
+    environment:
+      HELIX_ENV: production
+    restart:
+      policy: always
+      delay_seconds: 5
+      max_retries: 10
