@@ -74,6 +74,7 @@ func runDaemon(configPath string, portOverride int) {
 			fmt.Printf("service '%s' registered\n", serviceName)
 			if err := pm.Start(serviceName); err != nil {
 				fmt.Fprintf(os.Stderr, "auto-start failed: %v\n", err)
+				fmt.Println("you can start it manually later")
 			} else {
 				fmt.Printf("service '%s' started\n", serviceName)
 			}
