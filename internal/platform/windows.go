@@ -27,13 +27,11 @@ func (w *windowsManager) Register(name, displayName, description string) error {
 		return fmt.Errorf("get executable: %w", err)
 	}
 	absExe, _ := filepath.Abs(exe)
-	// Use sc.exe to register the service
-	cmd := fmt.Sprintf(`sc.exe create %s binPath= "%s" start= auto DisplayName= "%s"`, name, absExe, displayName)
-	parts := strings.Fields(cmd)
-	if len(parts) < 2 {
-		return fmt.Errorf("failed to build sc command")
-	}
-	return runCommand(parts[0], parts[1:]...)
+	return runCommand("sc.exe", "create", name,
+		"binPath=", absExe,
+		"start=", "auto",
+		"DisplayName=", displayName,
+	)
 }
 
 func (w *windowsManager) Unregister(name string) error {
