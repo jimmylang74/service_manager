@@ -96,35 +96,41 @@ func runDaemon(configPath string, portOverride int) {
 		port = portOverride
 	}
 
-	mgr.StartFileWatcher()
-	if err := mgr.Start(); err != nil {
-		mgr.Logger().Error("start failed: %v", err)
-		os.Exit(1)
-	}
-
-	srv := api.New(mgr, fmt.Sprintf(":%d", port))
-
-	if ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port)); err != nil {
-		fmt.Fprintf(os.Stderr, "port %d is already in use - service-manager may already be running\n", port)
-		os.Exit(1)
-	} else {
-		ln.Close()
-	}
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		if err := srv.Start(); err != nil {
-			mgr.Logger().Error("web server: %v", err)
+	runWithSCM(serviceName, func(stopCh chan struct{}) {
+		mgr.StartFileWatcher()
+		if err := mgr.Start(); err != nil {
+			mgr.Logger().Error("start failed: %v", err)
+			return
 		}
-	}()
 
-	<-sigCh
-	fmt.Println("\nshutting down...")
-	mgr.StopFileWatcher()
-	srv.Stop()
-	mgr.Stop()
+		srv := api.New(mgr, fmt.Sprintf(":%d", port))
+
+		if ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port)); err != nil {
+			mgr.Logger().Error("port %d is already in use", port)
+			return
+		} else {
+			ln.Close()
+		}
+
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+		go func() {
+			if err := srv.Start(); err != nil {
+				mgr.Logger().Error("web server: %v", err)
+			}
+		}()
+
+		select {
+		case <-sigCh:
+		case <-stopCh:
+		}
+
+		fmt.Println("\nshutting down...")
+		mgr.StopFileWatcher()
+		srv.Stop()
+		mgr.Stop()
+	})
 }
 
 func handleInstall(configPath string) {
