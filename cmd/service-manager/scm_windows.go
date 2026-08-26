@@ -30,6 +30,8 @@ const (
 	_SERVICE_STOPPED           = 0x00000001
 	_SERVICE_ACCEPT_STOP       = 0x00000001
 	_SERVICE_ACCEPT_SHUTDOWN   = 0x00000004
+	_SERVICE_CONTROL_STOP      = 1
+	_SERVICE_CONTROL_SHUTDOWN  = 5
 )
 
 type serviceStatus struct {
@@ -80,6 +82,12 @@ func initSCMLog() {
 }
 
 func runWithSCM(name string, fn func(stopCh chan struct{})) {
+	defer func() {
+		if r := recover(); r != nil {
+			scmLog("PANIC recovered: %v", r)
+		}
+	}()
+
 	initSCMLog()
 	scmLog("runWithSCM called, name: %s", name)
 	scmName = name
@@ -107,17 +115,28 @@ func runWithSCM(name string, fn func(stopCh chan struct{})) {
 	scmLog("stop received, exiting")
 }
 
-func scmServiceMain(argc uint32, argv **uint16) {
+func scmControlHandler(dwControl uint32, dwEventType uint32, lpEventData uintptr, lpContext uintptr) uintptr {
+	scmLog("control code received: %d", dwControl)
+	switch dwControl {
+	case _SERVICE_CONTROL_STOP, _SERVICE_CONTROL_SHUTDOWN:
+		scmLog("stop/shutdown requested, signaling...")
+		close(scmStopCh)
+	}
+	return 0
+}
+
+func scmServiceMain(argc uint32, argv **uint16) uintptr {
 	scmLog("scmServiceMain called, argc: %d", argc)
 
 	scmHandler, _, _ = procRegisterSCCtrlHandler.Call(
 		uintptr(unsafe.Pointer(&scmName)),
+		syscall.NewCallback(scmControlHandler),
 		0,
 	)
 	if scmHandler == 0 {
 		scmLog("RegisterServiceCtrlHandler FAILED")
 		scmStopCh <- struct{}{}
-		return
+		return 0
 	}
 	scmLog("RegisterServiceCtrlHandler OK, handler: %d", scmHandler)
 
@@ -156,6 +175,7 @@ func scmServiceMain(argc uint32, argv **uint16) {
 	s.dwControlsAccepted = 0
 	procSetServiceStatus.Call(scmHandler, uintptr(unsafe.Pointer(&s)))
 	scmLog("reported SERVICE_STOPPED")
+	return 0
 }
 
 func isSCM() bool {

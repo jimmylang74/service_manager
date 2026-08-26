@@ -1,6 +1,10 @@
 package api
 
-import "net/http"
+import (
+	"net/http"
+	"os"
+	"path/filepath"
+)
 
 func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/services", s.handleListServices)
@@ -19,5 +23,13 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok"}`))
 	})
-	mux.Handle("/", http.FileServer(http.Dir("web/dist")))
+
+	webDir := "web/dist"
+	if exe, err := os.Executable(); err == nil {
+		absWebDir := filepath.Join(filepath.Dir(exe), "web", "dist")
+		if _, err := os.Stat(absWebDir); err == nil {
+			webDir = absWebDir
+		}
+	}
+	mux.Handle("/", http.FileServer(http.Dir(webDir)))
 }

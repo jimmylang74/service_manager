@@ -65,42 +65,42 @@ func main() {
 }
 
 func runDaemon(configPath string, portOverride int) {
-	ensureConfig(configPath)
-
-	pm := platform.New()
-	registered, _ := pm.IsRegistered(serviceName)
-	if !registered {
-		fmt.Println("first run detected, registering as system service...")
-		if err := pm.Register(serviceName, serviceDisplayName, serviceDescription); err != nil {
-			fmt.Fprintf(os.Stderr, "auto-register failed: %v\n", err)
-		} else {
-			_ = pm.SetConfigPath(serviceName, configPath)
-			fmt.Printf("service '%s' registered\n", serviceName)
-			if err := pm.Start(serviceName); err != nil {
-				fmt.Fprintf(os.Stderr, "auto-start failed: %v\n", err)
-				fmt.Println("you can start it manually later")
-			} else {
-				fmt.Printf("service '%s' started\n", serviceName)
-			}
-			fmt.Println("this process will now exit; manage via web UI or system service commands")
-			return
-		}
-	}
-
-	loader := config.NewLoader(configPath)
-	mgr, err := manager.New(loader)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to initialize: %v\n", err)
-		os.Exit(1)
-	}
-
-	cfg := loader.Get()
-	port := cfg.WebPort
-	if portOverride > 0 {
-		port = portOverride
-	}
-
 	runWithSCM(serviceName, func(stopCh chan struct{}) {
+		ensureConfig(configPath)
+
+		pm := platform.New()
+		registered, _ := pm.IsRegistered(serviceName)
+		if !registered {
+			fmt.Println("first run detected, registering as system service...")
+			if err := pm.Register(serviceName, serviceDisplayName, serviceDescription); err != nil {
+				fmt.Fprintf(os.Stderr, "auto-register failed: %v\n", err)
+			} else {
+				_ = pm.SetConfigPath(serviceName, configPath)
+				fmt.Printf("service '%s' registered\n", serviceName)
+				if err := pm.Start(serviceName); err != nil {
+					fmt.Fprintf(os.Stderr, "auto-start failed: %v\n", err)
+					fmt.Println("you can start it manually later")
+				} else {
+					fmt.Printf("service '%s' started\n", serviceName)
+				}
+				fmt.Println("this process will now exit; manage via web UI or system service commands")
+				return
+			}
+		}
+
+		loader := config.NewLoader(configPath)
+		mgr, err := manager.New(loader)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to initialize: %v\n", err)
+			os.Exit(1)
+		}
+
+		cfg := loader.Get()
+		port := cfg.WebPort
+		if portOverride > 0 {
+			port = portOverride
+		}
+
 		mgr.StartFileWatcher()
 		if err := mgr.Start(); err != nil {
 			mgr.Logger().Error("start failed: %v", err)
