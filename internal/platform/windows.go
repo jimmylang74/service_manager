@@ -38,14 +38,23 @@ func (w *windowsManager) Register(name, displayName, description string) error {
 func (w *windowsManager) Unregister(name string) error {
 	runCommand("sc.exe", "config", name, "start=", "disabled")
 	runCommand("sc.exe", "stop", name)
-	time.Sleep(3 * time.Second)
+	time.Sleep(2 * time.Second)
 
-	for i := 0; i < 5; i++ {
+	myPid := os.Getpid()
+	cmd := exec.Command("powershell", "-Command",
+		fmt.Sprintf("Get-Process service-manager -ErrorAction SilentlyContinue | Where-Object {$_.Id -ne %d} | Stop-Process -Force", myPid))
+	cmd.Run()
+	time.Sleep(1 * time.Second)
+
+	for i := 0; i < 10; i++ {
 		err := runCommand("sc.exe", "delete", name)
 		if err == nil {
 			return nil
 		}
 		if strings.Contains(err.Error(), "1072") {
+			cmd := exec.Command("powershell", "-Command",
+				fmt.Sprintf("Get-Process service-manager -ErrorAction SilentlyContinue | Where-Object {$_.Id -ne %d} | Stop-Process -Force", myPid))
+			cmd.Run()
 			time.Sleep(2 * time.Second)
 			continue
 		}
