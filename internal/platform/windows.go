@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type windowsManager struct{}
@@ -35,8 +36,15 @@ func (w *windowsManager) Register(name, displayName, description string) error {
 }
 
 func (w *windowsManager) Unregister(name string) error {
-	_ = runCommand("sc.exe", "stop", name)
-	return runCommand("sc.exe", "delete", name)
+	runCommand("sc.exe", "stop", name)
+	time.Sleep(time.Second)
+
+	err := runCommand("sc.exe", "delete", name)
+	if err != nil && strings.Contains(err.Error(), "1072") {
+		time.Sleep(3 * time.Second)
+		err = runCommand("sc.exe", "delete", name)
+	}
+	return err
 }
 
 func (w *windowsManager) IsRegistered(name string) (bool, error) {
