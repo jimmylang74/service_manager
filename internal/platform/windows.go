@@ -38,18 +38,14 @@ func (w *windowsManager) Register(name, displayName, description string) error {
 func (w *windowsManager) Unregister(name string) error {
 	runCommand("sc.exe", "config", name, "start=", "disabled")
 	runCommand("sc.exe", "stop", name)
-	time.Sleep(2 * time.Second)
+	time.Sleep(3 * time.Second)
 
-	killOtherProcesses()
-	time.Sleep(1 * time.Second)
-
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 5; i++ {
 		err := runCommand("sc.exe", "delete", name)
 		if err == nil {
 			return nil
 		}
 		if strings.Contains(err.Error(), "1072") {
-			killOtherProcesses()
 			time.Sleep(2 * time.Second)
 			continue
 		}
@@ -59,14 +55,6 @@ func (w *windowsManager) Unregister(name string) error {
 		return err
 	}
 	return nil
-}
-
-func killOtherProcesses() {
-	myPid := os.Getpid()
-	cmd := exec.Command("wmic", "process", "where",
-		fmt.Sprintf("name='service-manager.exe' and processid<>%d", myPid),
-		"call", "terminate")
-	cmd.Run()
 }
 
 func (w *windowsManager) IsRegistered(name string) (bool, error) {
