@@ -2,7 +2,10 @@
 
 package main
 
-import "time"
+import (
+	"os"
+	"time"
+)
 
 func runWithSCM(_ string, fn func(stopCh chan struct{})) {
 	stopCh := make(chan struct{})
@@ -10,7 +13,7 @@ func runWithSCM(_ string, fn func(stopCh chan struct{})) {
 }
 
 func isSCM() bool {
-	return false
+	return os.Getenv("INVOCATION_ID") != ""
 }
 
 func scmSleep(d time.Duration) {

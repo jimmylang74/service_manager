@@ -56,7 +56,11 @@ func main() {
 	case install:
 		handleInstall(configPtr)
 	default:
-		runDaemon(configPtr, portPtr)
+		if isSCM() {
+			runDaemon(configPtr, portPtr)
+		} else {
+			handleManualRun(configPtr)
+		}
 	}
 }
 
@@ -157,6 +161,25 @@ func handleInstall(configPath string) {
 	fmt.Printf("service '%s' registered successfully\n", serviceName)
 }
 
+func handleManualRun(configPath string) {
+	ensureConfig(configPath)
+	pm := platform.New()
+	registered, _ := pm.IsRegistered(serviceName)
+	if !registered {
+		fmt.Println("first run detected, registering as system service...")
+		if err := pm.Register(serviceName, serviceDisplayName, serviceDescription); err != nil {
+			fmt.Fprintf(os.Stderr, "auto-register failed: %v\n", err)
+			return
+		}
+		_ = pm.SetConfigPath(serviceName, configPath)
+		fmt.Printf("service '%s' registered\n", serviceName)
+		fmt.Println("use 'sc start service-manager' to start the service")
+		return
+	}
+	fmt.Printf("service '%s' is already registered\n", serviceName)
+	fmt.Println("use 'sc start service-manager' to start the service")
+}
+
 func handleUninstall() {
 	pm := platform.New()
 	if err := pm.Unregister(serviceName); err != nil {
@@ -195,18 +218,17 @@ Options:
   -port int         override web server port
 
 Behavior:
-  (no flags)        first run: register + start service + exit
-                    subsequent runs: start daemon with web UI
+  (no flags)        first run: register service only
+                    subsequent runs: show registration status
   -install          register service without starting it
   -uninstall        stop and remove the service
 
 Examples:
-  %s                              # first run or start daemon
+  %s                              # register service
   %s -install -config ./cfg.yaml  # register with custom config
-  %s -port 8080                   # override web port
   %s -status                      # check if registered
   %s -uninstall                   # remove service
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 }
 
 func ensureConfig(path string) {
