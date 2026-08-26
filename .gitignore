@@ -2,9 +2,10 @@
 AGENTS.md
 *.log
 *.bak
-dist/service-manager
-dist/service-manager.exe
-logs/
-go.sum
-web/dist/assets/placeholder.txt
+/dist/
+/service-manager
+/service-manager.exe
+/logs/
+/go.sum
+/web/dist/assets/placeholder.txt
 

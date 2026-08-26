@@ -37,14 +37,10 @@ scripts/                          Build scripts
 
 ```bash
 # Linux
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/service-manager ./cmd/service-manager
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o service-manager ./cmd/service-manager
 
-# Windows
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o dist/service-manager.exe ./cmd/service-manager
-
-# Or use build scripts
-bash scripts/build-linux.sh
-bash scripts/build-windows.sh
+# Windows (GUI mode, no console window)
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui" -o service-manager.exe ./cmd/service-manager
 ```
 
 ### Usage
@@ -53,17 +49,28 @@ bash scripts/build-windows.sh
 service-manager [options]
 
 Options:
-  -action string    register | uninstall | status (default: run daemon)
+  -debug            run directly without registering as system service, logs to file only
+  -install          force re-register the system service
+  -uninstall        unregister and remove the system service
+  -status           show service registration status
   -config string    path to config file (default: <exe_dir>/config.yaml)
   -port int         override web server port
 ```
 
-**Run as daemon:**
+**Run as daemon (system service mode):**
 
 ```bash
 ./service-manager
 ./service-manager -config /path/to/config.yaml
 ./service-manager -port 8080
+```
+
+**Run in debug mode (direct, no system service):**
+
+```bash
+./service-manager -debug
+./service-manager -debug -port 8080
+./service-manager -debug -config ./cfg.yaml
 ```
 
 The web UI will be available at `http://localhost:7070` (or the configured port).
@@ -72,27 +79,27 @@ The web UI will be available at `http://localhost:7070` (or the configured port)
 
 ```bash
 # Linux (systemd)
-sudo ./service-manager -action register
+sudo ./service-manager -install
 sudo systemctl start service-manager
 
 # Windows (SCM)
-service-manager.exe -action register
+service-manager.exe -install
 ```
 
 **Check registration status:**
 
 ```bash
-./service-manager -action status
+./service-manager -status
 ```
 
 **Unregister:**
 
 ```bash
 # Linux
-sudo ./service-manager -action uninstall
+sudo ./service-manager -uninstall
 
 # Windows
-service-manager.exe -action uninstall
+service-manager.exe -uninstall
 ```
 
 ### Configuration
@@ -217,14 +224,10 @@ scripts/                          构建脚本
 
 ```bash
 # Linux
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/service-manager ./cmd/service-manager
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o service-manager ./cmd/service-manager
 
-# Windows
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o dist/service-manager.exe ./cmd/service-manager
-
-# 或使用构建脚本
-bash scripts/build-linux.sh
-bash scripts/build-windows.sh
+# Windows (GUI 模式，无控制台窗口)
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui" -o service-manager.exe ./cmd/service-manager
 ```
 
 ### 用法
@@ -233,17 +236,28 @@ bash scripts/build-windows.sh
 service-manager [选项]
 
 选项:
-  -action string    register | uninstall | status（默认：运行守护进程）
+  -debug            直接运行，不注册为系统服务，日志仅输出到文件
+  -install          强制重新注册系统服务
+  -uninstall        注销并移除系统服务
+  -status           显示服务注册状态
   -config string    配置文件路径（默认：<可执行文件目录>/config.yaml）
   -port int         覆盖 Web 服务端口
 ```
 
-**作为守护进程运行：**
+**作为守护进程运行（系统服务模式）：**
 
 ```bash
 ./service-manager
 ./service-manager -config /path/to/config.yaml
 ./service-manager -port 8080
+```
+
+**调试模式运行（直接运行，不注册系统服务）：**
+
+```bash
+./service-manager -debug
+./service-manager -debug -port 8080
+./service-manager -debug -config ./cfg.yaml
 ```
 
 Web 界面默认访问地址：`http://localhost:7070`
@@ -252,27 +266,27 @@ Web 界面默认访问地址：`http://localhost:7070`
 
 ```bash
 # Linux (systemd)
-sudo ./service-manager -action register
+sudo ./service-manager -install
 sudo systemctl start service-manager
 
 # Windows (SCM)
-service-manager.exe -action register
+service-manager.exe -install
 ```
 
 **查看注册状态：**
 
 ```bash
-./service-manager -action status
+./service-manager -status
 ```
 
 **注销服务：**
 
 ```bash
 # Linux
-sudo ./service-manager -action uninstall
+sudo ./service-manager -uninstall
 
 # Windows
-service-manager.exe -action uninstall
+service-manager.exe -uninstall
 ```
 
 ### 配置文件

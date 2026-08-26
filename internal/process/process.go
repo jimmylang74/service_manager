@@ -63,6 +63,7 @@ func (mp *ManagedProcess) startLocked() error {
 	cmd.Dir = mp.cfg.WorkingDirectory
 	cmd.Stdout = mp.writer
 	cmd.Stderr = mp.writer
+	setNoWindow(cmd)
 	mp.cmd = cmd
 	if err := cmd.Start(); err != nil {
 		mp.status = StatusError

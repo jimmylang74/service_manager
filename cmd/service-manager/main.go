@@ -40,7 +40,7 @@ func main() {
 	flag.BoolVar(&uninstall, "uninstall", false, "unregister and remove the system service")
 	flag.BoolVar(&status, "status", false, "show service registration status")
 	flag.BoolVar(&install, "install", false, "force re-register the system service")
-	flag.BoolVar(&debug, "debug", false, "start daemon directly without registering as system service, logs to console")
+	flag.BoolVar(&debug, "debug", false, "start daemon directly without registering as system service, logs to file only")
 	flag.StringVar(&configPtr, "config", "", "path to config file (default: <exe_dir>/config.yaml)")
 	flag.IntVar(&portPtr, "port", 0, "override web server port")
 	flag.Usage = printUsage
@@ -134,7 +134,7 @@ func runDaemon(configPath string, portOverride int) {
 		case <-stopCh:
 		}
 
-		fmt.Println("\nshutting down...")
+		mgr.Logger().Info("shutting down...")
 		mgr.StopFileWatcher()
 		srv.Stop()
 		mgr.Stop()
@@ -205,7 +205,7 @@ func handleManualRun(configPath string, portOverride int) {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	fmt.Printf("web UI: http://localhost:%d\n", port)
+	mgr.Logger().Info("web UI: http://localhost:%d", port)
 
 	go func() {
 		if err := srv.Start(); err != nil {
@@ -215,18 +215,17 @@ func handleManualRun(configPath string, portOverride int) {
 
 	<-sigCh
 
-	fmt.Println("\nshutting down...")
+	mgr.Logger().Info("shutting down...")
 	mgr.StopFileWatcher()
 	srv.Stop()
 	mgr.Stop()
 }
 
 func handleDebugRun(configPath string, portOverride int) {
-	fmt.Printf("[DEBUG] debug mode: config=%s\n", configPath)
 	ensureConfig(configPath)
 
 	loader := config.NewLoader(configPath)
-	mgr, err := manager.New(loader)
+	mgr, err := manager.New(loader, true)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize: %v\n", err)
 		os.Exit(1)
@@ -238,7 +237,8 @@ func handleDebugRun(configPath string, portOverride int) {
 		port = portOverride
 	}
 
-	fmt.Printf("[DEBUG] starting services: %d configured\n", len(cfg.Services))
+	mgr.Logger().Info("[DEBUG] debug mode: config=%s", configPath)
+	mgr.Logger().Info("[DEBUG] starting services: %d configured", len(cfg.Services))
 	mgr.StartFileWatcher()
 	if err := mgr.Start(); err != nil {
 		mgr.Logger().Error("start failed: %v", err)
@@ -248,7 +248,7 @@ func handleDebugRun(configPath string, portOverride int) {
 	srv := api.New(mgr, fmt.Sprintf(":%d", port))
 
 	if ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port)); err != nil {
-		fmt.Fprintf(os.Stderr, "port %d is already in use\n", port)
+		mgr.Logger().Error("port %d is already in use", port)
 		return
 	} else {
 		ln.Close()
@@ -257,7 +257,7 @@ func handleDebugRun(configPath string, portOverride int) {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	fmt.Printf("web UI: http://localhost:%d\n", port)
+	mgr.Logger().Info("web UI: http://localhost:%d", port)
 
 	go func() {
 		if err := srv.Start(); err != nil {
@@ -267,7 +267,7 @@ func handleDebugRun(configPath string, portOverride int) {
 
 	<-sigCh
 
-	fmt.Println("\nshutting down...")
+	mgr.Logger().Info("shutting down...")
 	mgr.StopFileWatcher()
 	srv.Stop()
 	mgr.Stop()
@@ -307,7 +307,7 @@ Options:
   -uninstall        unregister and remove the system service
   -status           show service registration status
   -install          force re-register the system service
-  -debug            start daemon directly, skip service registration, logs to console
+  -debug            start daemon directly, skip service registration, logs to file only
   -config string    path to config file (default: <exe_dir>/config.yaml)
   -port int         override web server port
 
@@ -319,7 +319,7 @@ Behavior:
   -uninstall        stop and remove the service
 
 Examples:
-  %s -debug                         # run directly with console logs
+  %s -debug                         # run directly, logs to file
   %s -debug -port 8080              # debug mode on custom port
   %s -debug -config ./cfg.yaml      # debug with custom config
 `, os.Args[0], os.Args[0], os.Args[0], os.Args[0])

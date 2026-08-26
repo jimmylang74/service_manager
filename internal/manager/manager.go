@@ -20,7 +20,8 @@ type Manager struct {
 }
 
 // New creates a Manager from a config loader.
-func New(loader *config.Loader) (*Manager, error) {
+// If fileOnly is true, logs go only to files (no console output).
+func New(loader *config.Loader, fileOnly ...bool) (*Manager, error) {
 	cfg := loader.Get()
 	if cfg == nil {
 		var err error
@@ -29,7 +30,7 @@ func New(loader *config.Loader) (*Manager, error) {
 			return nil, err
 		}
 	}
-	mgr, err := logger.NewManager(cfg.LogDir)
+	mgr, err := logger.NewManager(cfg.LogDir, fileOnly...)
 	if err != nil {
 		return nil, err
 	}

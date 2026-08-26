@@ -18,7 +18,8 @@ type Manager struct {
 }
 
 // NewManager creates a logger that writes to logs/manager.log.
-func NewManager(logDir string) (*Manager, error) {
+// If fileOnly is true, logs go only to the file (no stderr output).
+func NewManager(logDir string, fileOnly ...bool) (*Manager, error) {
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		return nil, err
 	}
@@ -27,8 +28,11 @@ func NewManager(logDir string) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	multi := io.MultiWriter(os.Stderr, f)
-	l := log.New(multi, "", log.LstdFlags)
+	var writer io.Writer = f
+	if len(fileOnly) == 0 || !fileOnly[0] {
+		writer = io.MultiWriter(os.Stderr, f)
+	}
+	l := log.New(writer, "", log.LstdFlags)
 	return &Manager{file: f, l: l}, nil
 }
 
