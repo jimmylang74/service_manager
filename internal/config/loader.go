@@ -27,6 +27,7 @@ func (l *Loader) Watch(stop <-chan struct{}, interval time.Duration) {
 			}
 			if info.ModTime().After(lastMod) {
 				lastMod = info.ModTime()
+				fmt.Printf("[DEBUG] Watch: file changed, reloading from %s\n", l.path)
 				if _, err := l.Load(); err != nil {
 					fmt.Fprintf(os.Stderr, "config reload error: %v\n", err)
 				}

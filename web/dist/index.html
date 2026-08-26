@@ -67,6 +67,12 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
+        .services-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
         .services-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -107,7 +113,7 @@
             margin-bottom: 16px;
         }
         .service-meta div { margin-bottom: 4px; }
-        .service-actions { display: flex; gap: 8px; }
+        .service-actions { display: flex; gap: 8px; flex-wrap: wrap; }
         .btn {
             padding: 8px 16px;
             border-radius: 8px;
@@ -245,6 +251,85 @@
             color: var(--text-muted);
         }
         .empty-state h3 { margin-bottom: 8px; font-size: 18px; }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.7);
+        }
+        .modal-content {
+            background-color: var(--bg-card);
+            margin: 5% auto;
+            padding: 24px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            position: relative;
+            animation: modalIn 0.3s ease;
+        }
+        @keyframes modalIn {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .close-btn {
+            color: var(--text-muted);
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .close-btn:hover { color: var(--text); }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .form-group textarea {
+            min-height: 60px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+        .form-row {
+            display: flex;
+            gap: 12px;
+        }
+        .form-row .form-group {
+            flex: 1;
+        }
+        .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
@@ -262,6 +347,10 @@
         </div>
 
         <div id="services" class="tab-content active">
+            <div class="services-header">
+                <h2>Services</h2>
+                <button type="button" class="btn btn-primary" onclick="openAddServiceModal()">+ Add Service</button>
+            </div>
             <div class="services-grid" id="servicesGrid"></div>
         </div>
 
@@ -303,6 +392,58 @@
         </div>
     </div>
 
+    <div id="serviceModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeServiceModal()">&times;</span>
+            <h3 id="modalTitle" style="margin-bottom: 20px;">Add Service</h3>
+            <form id="serviceForm" onsubmit="saveService(event)">
+                <input type="hidden" id="editServiceName">
+                <div class="form-group">
+                    <label for="serviceName">Name *</label>
+                    <input type="text" id="serviceName" required placeholder="e.g. my-app">
+                </div>
+                <div class="form-group">
+                    <label for="serviceExecutable">Executable *</label>
+                    <input type="text" id="serviceExecutable" required placeholder="e.g. /usr/bin/python3 or C:\Python312\python.exe">
+                </div>
+                <div class="form-group">
+                    <label for="serviceArguments">Arguments (one per line)</label>
+                    <textarea id="serviceArguments" placeholder="e.g. main.py&#10;--port&#10;8000"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="serviceWorkDir">Working Directory</label>
+                    <input type="text" id="serviceWorkDir" placeholder="e.g. /opt/my-app">
+                </div>
+                <div class="form-group">
+                    <label for="serviceEnv">Environment Variables (KEY=VALUE, one per line)</label>
+                    <textarea id="serviceEnv" placeholder="e.g. NODE_ENV=production&#10;PORT=3000"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="serviceRestartPolicy">Restart Policy</label>
+                        <select id="serviceRestartPolicy">
+                            <option value="on-failure">on-failure</option>
+                            <option value="always">always</option>
+                            <option value="no">no</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="serviceRestartDelay">Restart Delay (s)</label>
+                        <input type="number" id="serviceRestartDelay" min="1" value="5">
+                    </div>
+                    <div class="form-group">
+                        <label for="serviceRestartRetries">Max Retries</label>
+                        <input type="number" id="serviceRestartRetries" min="1" value="10">
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeServiceModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="formSubmitBtn">Add Service</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         const API = '';
         let eventSource = null;
@@ -324,7 +465,10 @@
                 headers: { 'Content-Type': 'application/json' },
                 ...opts
             });
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+                throw new Error(err.error || `HTTP ${resp.status}`);
+            }
             return resp.json();
         }
 
@@ -333,7 +477,7 @@
                 const data = await api('/api/services');
                 const grid = document.getElementById('servicesGrid');
                 if (!data.services || data.services.length === 0) {
-                    grid.innerHTML = '<div class="empty-state"><h3>No services configured</h3><p>Add services to config.yaml</p></div>';
+                    grid.innerHTML = '<div class="empty-state"><h3>No services configured</h3><p>Click "+ Add Service" to get started</p></div>';
                     return;
                 }
                 grid.innerHTML = data.services.map(svc => `
@@ -351,6 +495,7 @@
                             <button type="button" class="btn btn-success" onclick="serviceAction('${svc.name}', 'start')" ${svc.status === 'running' ? 'disabled' : ''}>Start</button>
                             <button type="button" class="btn btn-danger" onclick="serviceAction('${svc.name}', 'stop')" ${svc.status !== 'running' ? 'disabled' : ''}>Stop</button>
                             <button type="button" class="btn btn-secondary" onclick="serviceAction('${svc.name}', 'restart')">Restart</button>
+                            <button type="button" class="btn btn-danger" onclick="deleteService('${svc.name}')">Delete</button>
                         </div>
                     </div>
                 `).join('');
@@ -380,6 +525,117 @@
                 setTimeout(loadServices, 500);
             } catch (e) {
                 notify(`Failed to ${action} ${name}: ${e.message}`, 'error');
+            }
+        }
+
+        function openAddServiceModal() {
+            document.getElementById('modalTitle').textContent = 'Add Service';
+            document.getElementById('formSubmitBtn').textContent = 'Add Service';
+            document.getElementById('editServiceName').value = '';
+            document.getElementById('serviceForm').reset();
+            document.getElementById('serviceRestartPolicy').value = 'on-failure';
+            document.getElementById('serviceRestartDelay').value = 5;
+            document.getElementById('serviceRestartRetries').value = 10;
+            document.getElementById('serviceModal').style.display = 'block';
+        }
+
+        function openEditServiceModal(svc) {
+            document.getElementById('modalTitle').textContent = 'Edit Service';
+            document.getElementById('formSubmitBtn').textContent = 'Save Changes';
+            document.getElementById('editServiceName').value = svc.name;
+            document.getElementById('serviceName').value = svc.name;
+            document.getElementById('serviceName').disabled = true;
+            document.getElementById('serviceExecutable').value = svc.executable || '';
+            document.getElementById('serviceArguments').value = (svc.arguments || []).join('\n');
+            document.getElementById('serviceWorkDir').value = svc.working_directory || '';
+            const envLines = Object.entries(svc.environment || {}).map(([k, v]) => `${k}=${v}`);
+            document.getElementById('serviceEnv').value = envLines.join('\n');
+            if (svc.restart) {
+                document.getElementById('serviceRestartPolicy').value = svc.restart.policy || 'on-failure';
+                document.getElementById('serviceRestartDelay').value = svc.restart.delay_seconds || 5;
+                document.getElementById('serviceRestartRetries').value = svc.restart.max_retries || 10;
+            }
+            document.getElementById('serviceModal').style.display = 'block';
+        }
+
+        function closeServiceModal() {
+            document.getElementById('serviceModal').style.display = 'none';
+            document.getElementById('serviceName').disabled = false;
+        }
+
+        async function saveService(e) {
+            e.preventDefault();
+            const editName = document.getElementById('editServiceName').value;
+            const name = document.getElementById('serviceName').value.trim();
+            const executable = document.getElementById('serviceExecutable').value.trim();
+            const argsText = document.getElementById('serviceArguments').value.trim();
+            const workDir = document.getElementById('serviceWorkDir').value.trim();
+            const envText = document.getElementById('serviceEnv').value.trim();
+            const policy = document.getElementById('serviceRestartPolicy').value;
+            const delay = parseInt(document.getElementById('serviceRestartDelay').value) || 5;
+            const retries = parseInt(document.getElementById('serviceRestartRetries').value) || 10;
+
+            const args = argsText ? argsText.split('\n').map(l => l.trim()).filter(Boolean) : [];
+            const environment = {};
+            if (envText) {
+                envText.split('\n').forEach(line => {
+                    const trimmed = line.trim();
+                    const eqIdx = trimmed.indexOf('=');
+                    if (eqIdx > 0) {
+                        environment[trimmed.substring(0, eqIdx)] = trimmed.substring(eqIdx + 1);
+                    }
+                });
+            }
+
+            const svc = {
+                name,
+                executable,
+                arguments: args,
+                working_directory: workDir,
+                environment,
+                restart: { policy, delay_seconds: delay, max_retries: retries }
+            };
+
+            try {
+                if (editName) {
+                    await api(`/api/config`, {
+                        method: 'PUT',
+                        body: JSON.stringify(await getConfigWithServiceUpdate(svc))
+                    });
+                    notify(`Service "${name}" updated`, 'success');
+                } else {
+                    await api('/api/services', {
+                        method: 'POST',
+                        body: JSON.stringify(svc)
+                    });
+                    notify(`Service "${name}" added`, 'success');
+                }
+                closeServiceModal();
+                loadServices();
+            } catch (e) {
+                notify(`Failed to save service: ${e.message}`, 'error');
+            }
+        }
+
+        async function getConfigWithServiceUpdate(updatedSvc) {
+            const cfg = await api('/api/config');
+            const idx = cfg.services.findIndex(s => s.name === updatedSvc.name);
+            if (idx >= 0) {
+                cfg.services[idx] = updatedSvc;
+            } else {
+                cfg.services.push(updatedSvc);
+            }
+            return cfg;
+        }
+
+        async function deleteService(name) {
+            if (!confirm(`Are you sure you want to delete service "${name}"?`)) return;
+            try {
+                await api(`/api/services/${name}`, { method: 'DELETE' });
+                notify(`Service "${name}" deleted`, 'success');
+                loadServices();
+            } catch (e) {
+                notify(`Failed to delete service: ${e.message}`, 'error');
             }
         }
 
@@ -558,6 +814,12 @@
             if (current) result.services.push(current);
             return result;
         }
+
+        window.addEventListener('click', (e) => {
+            if (e.target === document.getElementById('serviceModal')) {
+                closeServiceModal();
+            }
+        });
 
         loadServices();
         setInterval(loadServices, 5000);

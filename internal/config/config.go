@@ -49,10 +49,12 @@ func (l *Loader) OnChange(fn func(*ManagerConfig)) {
 }
 
 func (l *Loader) Load() (*ManagerConfig, error) {
+	fmt.Printf("[DEBUG] Loader.Load: reading from path=%s\n", l.path)
 	data, err := os.ReadFile(l.path)
 	if err != nil {
 		return nil, fmt.Errorf("read config %s: %w", l.path, err)
 	}
+	fmt.Printf("[DEBUG] Loader.Load: read %d bytes\n", len(data))
 	cfg, err := parseYAML(data)
 	if err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", l.path, err)
@@ -99,6 +101,7 @@ func (l *Loader) Save() error {
 func (l *Loader) UpdateAndSave(cfg *ManagerConfig) error {
 	l.mu.Lock()
 	l.config = cfg
+	fmt.Printf("[DEBUG] Loader.UpdateAndSave: services=%d, path=%s\n", len(cfg.Services), l.path)
 	l.mu.Unlock()
 	return l.Save()
 }
@@ -106,6 +109,11 @@ func (l *Loader) UpdateAndSave(cfg *ManagerConfig) error {
 func (l *Loader) Get() *ManagerConfig {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
+	if l.config != nil {
+		fmt.Printf("[DEBUG] Loader.Get: path=%s, services=%d\n", l.path, len(l.config.Services))
+	} else {
+		fmt.Printf("[DEBUG] Loader.Get: path=%s, config=nil\n", l.path)
+	}
 	return l.config
 }
 
@@ -156,24 +164,24 @@ func marshalYAMLValue(v interface{}, ind int) string {
 	case ServiceConfig:
 		var sb strings.Builder
 		sb.WriteString("\n")
-		sb.WriteString(strings.Repeat(" ", ind) + "  name: " + marshalYAMLValue(val.Name, ind+2) + "\n")
-		sb.WriteString(strings.Repeat(" ", ind) + "  executable: " + marshalYAMLValue(val.Executable, ind+2) + "\n")
+		sb.WriteString(strings.Repeat(" ", ind) + "  - name: " + marshalYAMLValue(val.Name, ind+4) + "\n")
+		sb.WriteString(strings.Repeat(" ", ind) + "    executable: " + marshalYAMLValue(val.Executable, ind+4) + "\n")
 		if len(val.Arguments) > 0 {
-			sb.WriteString(strings.Repeat(" ", ind) + "  arguments:\n")
+			sb.WriteString(strings.Repeat(" ", ind) + "    arguments:\n")
 			for _, arg := range val.Arguments {
-				sb.WriteString(strings.Repeat(" ", ind) + "    - " + marshalYAMLValue(arg, ind+4) + "\n")
+				sb.WriteString(strings.Repeat(" ", ind) + "      - " + marshalYAMLValue(arg, ind+6) + "\n")
 			}
 		}
 		if val.WorkingDirectory != "" {
-			sb.WriteString(strings.Repeat(" ", ind) + "  working_directory: " + marshalYAMLValue(val.WorkingDirectory, ind+2) + "\n")
+			sb.WriteString(strings.Repeat(" ", ind) + "    working_directory: " + marshalYAMLValue(val.WorkingDirectory, ind+4) + "\n")
 		}
 		if len(val.Environment) > 0 {
-			sb.WriteString(strings.Repeat(" ", ind) + "  environment:\n")
+			sb.WriteString(strings.Repeat(" ", ind) + "    environment:\n")
 			for k, v2 := range val.Environment {
-				sb.WriteString(strings.Repeat(" ", ind) + "    " + k + ": " + marshalYAMLValue(v2, ind+4) + "\n")
+				sb.WriteString(strings.Repeat(" ", ind) + "      " + k + ": " + marshalYAMLValue(v2, ind+6) + "\n")
 			}
 		}
-		sb.WriteString(strings.Repeat(" ", ind) + "  restart:" + marshalYAMLValue(val.Restart, ind+2))
+		sb.WriteString(strings.Repeat(" ", ind) + "    restart:" + marshalYAMLValue(val.Restart, ind+4))
 		return strings.TrimRight(sb.String(), "\n")
 	default:
 		return fmt.Sprintf("%v", v)
@@ -247,6 +255,13 @@ func parseYAML(data []byte) (*ManagerConfig, error) {
 		}
 
 		if section == "services" && depth == 2 && currentService == nil {
+			if key == "name" {
+				svc := ServiceConfig{Name: unquote(val)}
+				cfg.Services = append(cfg.Services, svc)
+				idx := len(cfg.Services) - 1
+				currentService = &cfg.Services[idx]
+				section = "service_body"
+			}
 			continue
 		}
 

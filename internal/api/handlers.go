@@ -132,13 +132,17 @@ func (s *Server) handleSSELogs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleGetConfig returns the current config.
 func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := s.mgr.Loader().Get()
+	fmt.Printf("[DEBUG] handleGetConfig: cfg=%v, services=%d\n", cfg != nil, len(cfg.Services))
 	if cfg == nil {
 		writeError(w, http.StatusInternalServerError, "no config loaded")
 		return
 	}
+	for i, svc := range cfg.Services {
+		fmt.Printf("[DEBUG]   service[%d]: name=%s exe=%s\n", i, svc.Name, svc.Executable)
+	}
+	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, cfg)
 }
 
@@ -158,6 +162,81 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+// handleAddService adds a new service to the configuration.
+func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
+	var svc config.ServiceConfig
+	if err := json.NewDecoder(r.Body).Decode(&svc); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+
+	cfg := s.mgr.Loader().Get()
+	if cfg == nil {
+		writeError(w, http.StatusInternalServerError, "no config loaded")
+		return
+	}
+
+	// Check for duplicate name
+	for _, existing := range cfg.Services {
+		if existing.Name == svc.Name {
+			writeError(w, http.StatusConflict, "service with this name already exists")
+			return
+		}
+	}
+
+	cfg.Services = append(cfg.Services, svc)
+
+	if err := s.mgr.Loader().UpdateAndSave(cfg); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := s.mgr.Reload(); err != nil {
+		writeError(w, http.StatusInternalServerError, "reload: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "added"})
+}
+
+// handleDeleteService removes a service from the configuration.
+func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	cfg := s.mgr.Loader().Get()
+	if cfg == nil {
+		writeError(w, http.StatusInternalServerError, "no config loaded")
+		return
+	}
+
+	found := false
+	var newServices []config.ServiceConfig
+	for _, svc := range cfg.Services {
+		if svc.Name == name {
+			found = true
+			continue
+		}
+		newServices = append(newServices, svc)
+	}
+
+	if !found {
+		writeError(w, http.StatusNotFound, "service not found")
+		return
+	}
+
+	cfg.Services = newServices
+
+	if err := s.mgr.Loader().UpdateAndSave(cfg); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := s.mgr.Reload(); err != nil {
+		writeError(w, http.StatusInternalServerError, "reload: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 // handleUpdatePort updates the web port and saves config.

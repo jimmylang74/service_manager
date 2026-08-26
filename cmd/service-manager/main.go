@@ -32,6 +32,7 @@ func main() {
 		uninstall bool
 		status    bool
 		install   bool
+		debug     bool
 		configPtr string
 		portPtr   int
 	)
@@ -39,6 +40,7 @@ func main() {
 	flag.BoolVar(&uninstall, "uninstall", false, "unregister and remove the system service")
 	flag.BoolVar(&status, "status", false, "show service registration status")
 	flag.BoolVar(&install, "install", false, "force re-register the system service")
+	flag.BoolVar(&debug, "debug", false, "start daemon directly without registering as system service, logs to console")
 	flag.StringVar(&configPtr, "config", "", "path to config file (default: <exe_dir>/config.yaml)")
 	flag.IntVar(&portPtr, "port", 0, "override web server port")
 	flag.Usage = printUsage
@@ -55,11 +57,13 @@ func main() {
 		handleStatus()
 	case install:
 		handleInstall(configPtr)
+	case debug:
+		handleDebugRun(configPtr, portPtr)
 	default:
 		if isSCM() {
 			runDaemon(configPtr, portPtr)
 		} else {
-			handleManualRun(configPtr)
+			handleManualRun(configPtr, portPtr)
 		}
 	}
 }
@@ -161,23 +165,112 @@ func handleInstall(configPath string) {
 	fmt.Printf("service '%s' registered successfully\n", serviceName)
 }
 
-func handleManualRun(configPath string) {
+func handleManualRun(configPath string, portOverride int) {
 	ensureConfig(configPath)
+
 	pm := platform.New()
 	registered, _ := pm.IsRegistered(serviceName)
 	if !registered {
 		fmt.Println("first run detected, registering as system service...")
 		if err := pm.Register(serviceName, serviceDisplayName, serviceDescription); err != nil {
 			fmt.Fprintf(os.Stderr, "auto-register failed: %v\n", err)
-			return
+			fmt.Println("starting in manual mode (web UI available)")
+		} else {
+			_ = pm.SetConfigPath(serviceName, configPath)
+			fmt.Printf("service '%s' registered\n", serviceName)
 		}
-		_ = pm.SetConfigPath(serviceName, configPath)
-		fmt.Printf("service '%s' registered\n", serviceName)
-		fmt.Println("use 'sc start service-manager' to start the service")
+	}
+
+	loader := config.NewLoader(configPath)
+	mgr, err := manager.New(loader)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize: %v\n", err)
+		os.Exit(1)
+	}
+
+	cfg := loader.Get()
+	port := cfg.WebPort
+	if portOverride > 0 {
+		port = portOverride
+	}
+
+	mgr.StartFileWatcher()
+	if err := mgr.Start(); err != nil {
+		mgr.Logger().Error("start failed: %v", err)
 		return
 	}
-	fmt.Printf("service '%s' is already registered\n", serviceName)
-	fmt.Println("use 'sc start service-manager' to start the service")
+
+	srv := api.New(mgr, fmt.Sprintf(":%d", port))
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	fmt.Printf("web UI: http://localhost:%d\n", port)
+
+	go func() {
+		if err := srv.Start(); err != nil {
+			mgr.Logger().Error("web server: %v", err)
+		}
+	}()
+
+	<-sigCh
+
+	fmt.Println("\nshutting down...")
+	mgr.StopFileWatcher()
+	srv.Stop()
+	mgr.Stop()
+}
+
+func handleDebugRun(configPath string, portOverride int) {
+	fmt.Printf("[DEBUG] debug mode: config=%s\n", configPath)
+	ensureConfig(configPath)
+
+	loader := config.NewLoader(configPath)
+	mgr, err := manager.New(loader)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize: %v\n", err)
+		os.Exit(1)
+	}
+
+	cfg := loader.Get()
+	port := cfg.WebPort
+	if portOverride > 0 {
+		port = portOverride
+	}
+
+	fmt.Printf("[DEBUG] starting services: %d configured\n", len(cfg.Services))
+	mgr.StartFileWatcher()
+	if err := mgr.Start(); err != nil {
+		mgr.Logger().Error("start failed: %v", err)
+		return
+	}
+
+	srv := api.New(mgr, fmt.Sprintf(":%d", port))
+
+	if ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port)); err != nil {
+		fmt.Fprintf(os.Stderr, "port %d is already in use\n", port)
+		return
+	} else {
+		ln.Close()
+	}
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	fmt.Printf("web UI: http://localhost:%d\n", port)
+
+	go func() {
+		if err := srv.Start(); err != nil {
+			mgr.Logger().Error("web server: %v", err)
+		}
+	}()
+
+	<-sigCh
+
+	fmt.Println("\nshutting down...")
+	mgr.StopFileWatcher()
+	srv.Stop()
+	mgr.Stop()
 }
 
 func handleUninstall() {
@@ -214,21 +307,22 @@ Options:
   -uninstall        unregister and remove the system service
   -status           show service registration status
   -install          force re-register the system service
+  -debug            start daemon directly, skip service registration, logs to console
   -config string    path to config file (default: <exe_dir>/config.yaml)
   -port int         override web server port
 
 Behavior:
   (no flags)        first run: register service only
                     subsequent runs: show registration status
+  -debug            run directly without SCM, useful for development/debugging
   -install          register service without starting it
   -uninstall        stop and remove the service
 
 Examples:
-  %s                              # register service
-  %s -install -config ./cfg.yaml  # register with custom config
-  %s -status                      # check if registered
-  %s -uninstall                   # remove service
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+  %s -debug                         # run directly with console logs
+  %s -debug -port 8080              # debug mode on custom port
+  %s -debug -config ./cfg.yaml      # debug with custom config
+`, os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 }
 
 func ensureConfig(path string) {

@@ -9,6 +9,8 @@ import (
 func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/services", s.handleListServices)
 	mux.HandleFunc("GET /api/services/{name}", s.handleGetService)
+	mux.HandleFunc("POST /api/services", s.handleAddService)
+	mux.HandleFunc("DELETE /api/services/{name}", s.handleDeleteService)
 	mux.HandleFunc("POST /api/services/{name}/start", s.handleStartService)
 	mux.HandleFunc("POST /api/services/{name}/stop", s.handleStopService)
 	mux.HandleFunc("POST /api/services/{name}/restart", s.handleRestartService)
