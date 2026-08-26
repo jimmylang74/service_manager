@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-OUTPUT_DIR="../dist/linux"
+OUTPUT_DIR=".."
 mkdir -p "$OUTPUT_DIR"
 
 echo "Building for Linux amd64..."
