@@ -37,7 +37,10 @@ func (w *windowsManager) Register(name, displayName, description string) error {
 
 func (w *windowsManager) Unregister(name string) error {
 	runCommand("sc.exe", "stop", name)
-	time.Sleep(3 * time.Second)
+	time.Sleep(2 * time.Second)
+
+	runCommand("taskkill", "/F", "/IM", "service-manager.exe")
+	time.Sleep(1 * time.Second)
 
 	for i := 0; i < 10; i++ {
 		err := runCommand("sc.exe", "delete", name)
