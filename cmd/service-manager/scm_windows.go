@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -51,10 +52,36 @@ var (
 	scmStopCh   chan struct{}
 	scmMainFunc func(stopCh chan struct{})
 	scmHandler  uintptr
+	scmLogFile  *os.File
 )
 
+func scmLog(format string, args ...interface{}) {
+	msg := fmt.Sprintf("[SCM] "+format, args...)
+	if scmLogFile != nil {
+		fmt.Fprintln(scmLogFile, msg)
+		scmLogFile.Sync()
+	}
+	fmt.Println(msg)
+}
+
+func initSCMLog() {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	logPath := filepath.Join(filepath.Dir(exe), "scm_debug.log")
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cannot open scm_debug.log: %v\n", err)
+		return
+	}
+	scmLogFile = f
+	fmt.Fprintln(scmLogFile, "=== SCM debug log started ===")
+}
+
 func runWithSCM(name string, fn func(stopCh chan struct{})) {
-	fmt.Println("[SCM] runWithSCM called, name:", name)
+	initSCMLog()
+	scmLog("runWithSCM called, name: %s", name)
 	scmName = name
 	scmMainFunc = fn
 	scmStopCh = make(chan struct{})
@@ -66,33 +93,33 @@ func runWithSCM(name string, fn func(stopCh chan struct{})) {
 	}
 	table := [2]serviceTableEntry{entry, {}}
 
-	fmt.Println("[SCM] calling StartServiceCtrlDispatcher...")
+	scmLog("calling StartServiceCtrlDispatcher...")
 	ret, _, errNo := procStartSCDispatcher.Call(uintptr(unsafe.Pointer(&table[0])))
 	if ret == 0 {
-		fmt.Fprintf(os.Stderr, "[SCM] StartServiceCtrlDispatcher FAILED (error %d), not under SCM\n", errNo)
-		fmt.Println("[SCM] running as console app")
+		scmLog("StartServiceCtrlDispatcher FAILED (error %d), not under SCM", errNo)
+		scmLog("running as console app")
 		fn(make(chan struct{}))
 		return
 	}
 
-	fmt.Println("[SCM] StartServiceCtrlDispatcher succeeded, waiting for stop...")
+	scmLog("StartServiceCtrlDispatcher succeeded, waiting for stop...")
 	<-scmStopCh
-	fmt.Println("[SCM] stop received, exiting")
+	scmLog("stop received, exiting")
 }
 
 func scmServiceMain(argc uint32, argv **uint16) {
-	fmt.Println("[SCM] scmServiceMain called, argc:", argc)
+	scmLog("scmServiceMain called, argc: %d", argc)
 
 	scmHandler, _, _ = procRegisterSCCtrlHandler.Call(
 		uintptr(unsafe.Pointer(&scmName)),
 		0,
 	)
 	if scmHandler == 0 {
-		fmt.Fprintln(os.Stderr, "[SCM] RegisterServiceCtrlHandler FAILED")
+		scmLog("RegisterServiceCtrlHandler FAILED")
 		scmStopCh <- struct{}{}
 		return
 	}
-	fmt.Println("[SCM] RegisterServiceCtrlHandler OK, handler:", scmHandler)
+	scmLog("RegisterServiceCtrlHandler OK, handler: %d", scmHandler)
 
 	s := serviceStatus{
 		dwServiceType:   _SERVICE_WIN32_OWN_PROCESS,
@@ -101,13 +128,13 @@ func scmServiceMain(argc uint32, argv **uint16) {
 		dwCheckPoint:    1,
 	}
 	procSetServiceStatus.Call(scmHandler, uintptr(unsafe.Pointer(&s)))
-	fmt.Println("[SCM] reported SERVICE_START_PENDING")
+	scmLog("reported SERVICE_START_PENDING")
 
 	done := make(chan struct{})
 	go func() {
-		fmt.Println("[SCM] starting daemon...")
+		scmLog("starting daemon...")
 		scmMainFunc(scmStopCh)
-		fmt.Println("[SCM] daemon exited")
+		scmLog("daemon exited")
 		close(done)
 	}()
 
@@ -116,29 +143,29 @@ func scmServiceMain(argc uint32, argv **uint16) {
 	s.dwWaitHint = 0
 	s.dwCheckPoint = 0
 	procSetServiceStatus.Call(scmHandler, uintptr(unsafe.Pointer(&s)))
-	fmt.Println("[SCM] reported SERVICE_RUNNING")
+	scmLog("reported SERVICE_RUNNING")
 
 	select {
 	case <-scmStopCh:
-		fmt.Println("[SCM] stop signal received")
+		scmLog("stop signal received")
 	case <-done:
-		fmt.Println("[SCM] daemon finished")
+		scmLog("daemon finished")
 	}
 
 	s.dwCurrentState = _SERVICE_STOPPED
 	s.dwControlsAccepted = 0
 	procSetServiceStatus.Call(scmHandler, uintptr(unsafe.Pointer(&s)))
-	fmt.Println("[SCM] reported SERVICE_STOPPED")
+	scmLog("reported SERVICE_STOPPED")
 }
 
 func isSCM() bool {
 	ppid := getParentPID()
 	if ppid == 0 {
-		fmt.Println("[SCM] isSCM: cannot get parent PID")
+		scmLog("isSCM: cannot get parent PID")
 		return false
 	}
 	name := getProcessNameByPID(ppid)
-	fmt.Printf("[SCM] isSCM: parent PID=%d, name=%s\n", ppid, name)
+	scmLog("isSCM: parent PID=%d, name=%s", ppid, name)
 	return strings.EqualFold(name, "services.exe")
 }
 
@@ -161,7 +188,7 @@ func getParentPID() uint32 {
 		0,
 	)
 	if status != 0 {
-		fmt.Printf("[SCM] NtQueryInformationProcess failed: %d\n", status)
+		scmLog("NtQueryInformationProcess failed: %d", status)
 		return 0
 	}
 	return uint32(pbi.InheritedFromUniqueProcessId)
@@ -170,7 +197,7 @@ func getParentPID() uint32 {
 func getProcessNameByPID(pid uint32) string {
 	handle, _ := syscall.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if handle == 0 {
-		fmt.Printf("[SCM] OpenProcess failed for PID %d\n", pid)
+		scmLog("OpenProcess failed for PID %d", pid)
 		return ""
 	}
 	defer syscall.CloseHandle(handle)
@@ -184,7 +211,7 @@ func getProcessNameByPID(pid uint32) string {
 		uintptr(unsafe.Pointer(&size)),
 	)
 	if ret == 0 {
-		fmt.Printf("[SCM] QueryFullProcessImageName failed\n")
+		scmLog("QueryFullProcessImageName failed")
 		return ""
 	}
 	path := syscall.UTF16ToString(buf[:size])
