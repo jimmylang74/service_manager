@@ -37,17 +37,21 @@ func (w *windowsManager) Register(name, displayName, description string) error {
 
 func (w *windowsManager) Unregister(name string) error {
 	runCommand("sc.exe", "stop", name)
-	time.Sleep(2 * time.Second)
+	time.Sleep(3 * time.Second)
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 10; i++ {
 		err := runCommand("sc.exe", "delete", name)
 		if err == nil {
 			return nil
 		}
-		if !strings.Contains(err.Error(), "1072") {
-			return err
+		if strings.Contains(err.Error(), "1072") {
+			time.Sleep(2 * time.Second)
+			continue
 		}
-		time.Sleep(2 * time.Second)
+		if strings.Contains(err.Error(), "1060") {
+			return nil
+		}
+		return err
 	}
 	return nil
 }
