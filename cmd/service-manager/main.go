@@ -32,19 +32,28 @@ func main() {
 		uninstall bool
 		status    bool
 		install   bool
-		debug     bool
+		console   bool
 		configPtr string
 		portPtr   int
 	)
 
+	registerSCMFlag()
 	flag.BoolVar(&uninstall, "uninstall", false, "unregister and remove the system service")
 	flag.BoolVar(&status, "status", false, "show service registration status")
 	flag.BoolVar(&install, "install", false, "force re-register the system service")
-	flag.BoolVar(&debug, "debug", false, "start daemon directly without registering as system service, logs to file only")
+	flag.BoolVar(&console, "console", false, "keep the console attached (do not detach via FreeConsole)")
 	flag.StringVar(&configPtr, "config", "", "path to config file (default: <exe_dir>/config.yaml)")
 	flag.IntVar(&portPtr, "port", 0, "override web server port")
 	flag.Usage = printUsage
 	flag.Parse()
+
+	// --help / -h / -help is handled inside flag.Parse(): usage is printed to
+	// the console and the process exits before this point. Detach from the
+	// console afterwards so normal runs do not keep a console window open,
+	// unless -console asks to keep it attached.
+	if !console {
+		detachConsole()
+	}
 
 	if configPtr == "" {
 		configPtr = defaultConfigPath()
@@ -57,13 +66,17 @@ func main() {
 		handleStatus()
 	case install:
 		handleInstall(configPtr)
-	case debug:
-		handleDebugRun(configPtr, portPtr)
-	default:
+	case scmOpt != nil && *scmOpt:
 		if isSCM() {
 			runDaemon(configPtr, portPtr)
 		} else {
 			handleManualRun(configPtr, portPtr)
+		}
+	default:
+		if isSCM() {
+			runDaemon(configPtr, portPtr)
+		} else {
+			handleDebugRun(configPtr, portPtr)
 		}
 	}
 }
@@ -237,8 +250,8 @@ func handleDebugRun(configPath string, portOverride int) {
 		port = portOverride
 	}
 
-	mgr.Logger().Info("[DEBUG] debug mode: config=%s", configPath)
-	mgr.Logger().Info("[DEBUG] starting services: %d configured", len(cfg.Services))
+	mgr.Logger().Info("running directly (no system service registration): config=%s", configPath)
+	mgr.Logger().Info("starting services: %d configured", len(cfg.Services))
 	mgr.StartFileWatcher()
 	if err := mgr.Start(); err != nil {
 		mgr.Logger().Error("start failed: %v", err)
@@ -301,28 +314,35 @@ func defaultConfigPath() string {
 }
 
 func printUsage() {
+	scmOption, scmBehavior, scmExample := "", "", ""
+	if scmOpt != nil {
+		scmOption = "  -scm              run as a system service (register and start it when launched under SCM)\n"
+		scmBehavior = "  -scm              first run: register the service only\n                    launched by SCM: run the system service\n"
+		scmExample = fmt.Sprintf("  %s -scm                     # register and run as a system service\n", os.Args[0])
+	}
 	fmt.Fprintf(os.Stderr, `Usage: %s [options]
 
 Options:
+%s  -console          keep the console attached (do not detach via FreeConsole)
+  -install          force re-register the system service
   -uninstall        unregister and remove the system service
   -status           show service registration status
-  -install          force re-register the system service
-  -debug            start daemon directly, skip service registration, logs to file only
   -config string    path to config file (default: <exe_dir>/config.yaml)
   -port int         override web server port
 
 Behavior:
-  (no flags)        first run: register service only
-                    subsequent runs: show registration status
-  -debug            run directly without SCM, useful for development/debugging
+%s  (no flags)        run directly without registering as a system service (default)
+                    launched by systemd/SCM: run the system service
+  -console          stay attached to the console so output is visible
   -install          register service without starting it
   -uninstall        stop and remove the service
 
 Examples:
-  %s -debug                         # run directly, logs to file
-  %s -debug -port 8080              # debug mode on custom port
-  %s -debug -config ./cfg.yaml      # debug with custom config
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+  %s                          # run directly, logs to file
+  %s -port 8080               # run directly on a custom port
+  %s -config ./cfg.yaml       # run directly with a custom config
+%s  %s -console                 # run directly, keep console output visible
+`, os.Args[0], scmOption, scmBehavior, os.Args[0], os.Args[0], os.Args[0], scmExample, os.Args[0])
 }
 
 func ensureConfig(path string) {

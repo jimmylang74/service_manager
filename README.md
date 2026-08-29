@@ -39,9 +39,11 @@ scripts/                          Build scripts
 # Linux
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o service-manager ./cmd/service-manager
 
-# Windows (GUI mode, no console window)
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui" -o service-manager.exe ./cmd/service-manager
+# Windows
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o service-manager.exe ./cmd/service-manager
 ```
+
+On Windows the executable is a console app, so `--help` can display usage in a terminal. Every other run detaches from the console inside the program (`FreeConsole`), so no console window is left open; pass `-console` to keep the console attached.
 
 ### Usage
 
@@ -49,7 +51,8 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui" -o ser
 service-manager [options]
 
 Options:
-  -debug            run directly without registering as system service, logs to file only
+  -scm              [Windows] register and run as a system service (register and start it when launched under SCM)
+  -console          keep the console attached (do not detach via FreeConsole)
   -install          force re-register the system service
   -uninstall        unregister and remove the system service
   -status           show service registration status
@@ -57,7 +60,7 @@ Options:
   -port int         override web server port
 ```
 
-**Run as daemon (system service mode):**
+**Run directly (default, no system service registration):**
 
 ```bash
 ./service-manager
@@ -65,12 +68,22 @@ Options:
 ./service-manager -port 8080
 ```
 
-**Run in debug mode (direct, no system service):**
+**Run as daemon (system service mode):**
 
 ```bash
-./service-manager -debug
-./service-manager -debug -port 8080
-./service-manager -debug -config ./cfg.yaml
+# Linux: register with systemd, then start. The unit launches the binary
+# without arguments and the systemd launch is detected automatically
+# (INVOCATION_ID), so no flag is needed - there is no -scm on Linux.
+sudo ./service-manager -install
+sudo systemctl start service-manager
+
+# Windows: register with SCM, then start it. The service entry launches the
+# exe without arguments; the SCM parent process is detected automatically.
+service-manager.exe -install
+sc start service-manager
+
+# Windows: register and run in one step from a console
+service-manager.exe -scm
 ```
 
 The web UI will be available at `http://localhost:7070` (or the configured port).
@@ -226,9 +239,11 @@ scripts/                          构建脚本
 # Linux
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o service-manager ./cmd/service-manager
 
-# Windows (GUI 模式，无控制台窗口)
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui" -o service-manager.exe ./cmd/service-manager
+# Windows
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o service-manager.exe ./cmd/service-manager
 ```
+
+Windows 下编译为控制台程序，`--help` 可以在终端中显示帮助信息；其余运行模式在程序内部通过 `FreeConsole` 脱离控制台，因此不会残留控制台窗口；使用 `-console` 参数则保持控制台附着。
 
 ### 用法
 
@@ -236,7 +251,8 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui" -o ser
 service-manager [选项]
 
 选项:
-  -debug            直接运行，不注册为系统服务，日志仅输出到文件
+  -scm              [仅 Windows] 以系统服务方式运行（由 SCM 启动时注册并运行服务）
+  -console          保持控制台附着（不调用 FreeConsole 脱离）
   -install          强制重新注册系统服务
   -uninstall        注销并移除系统服务
   -status           显示服务注册状态
@@ -244,7 +260,7 @@ service-manager [选项]
   -port int         覆盖 Web 服务端口
 ```
 
-**作为守护进程运行（系统服务模式）：**
+**直接运行（默认模式，不注册系统服务）：**
 
 ```bash
 ./service-manager
@@ -252,12 +268,21 @@ service-manager [选项]
 ./service-manager -port 8080
 ```
 
-**调试模式运行（直接运行，不注册系统服务）：**
+**作为守护进程运行（系统服务模式）：**
 
 ```bash
-./service-manager -debug
-./service-manager -debug -port 8080
-./service-manager -debug -config ./cfg.yaml
+# Linux: 注册 systemd 单元后启动。unit 无参数启动二进制，
+# systemd 启动方式自动检测（INVOCATION_ID），无需任何参数 —— Linux 没有 -scm。
+sudo ./service-manager -install
+sudo systemctl start service-manager
+
+# Windows: 注册 SCM 服务后启动。SCM 无参数启动 exe，
+# 通过父进程（services.exe）自动检测。
+service-manager.exe -install
+sc start service-manager
+
+# Windows: 或在控制台一步完成注册并运行
+service-manager.exe -scm
 ```
 
 Web 界面默认访问地址：`http://localhost:7070`
