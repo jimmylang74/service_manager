@@ -23,14 +23,14 @@ const (
 
 // ManagedProcess wraps an os/exec.Cmd with restart logic and log capture.
 type ManagedProcess struct {
-	mu       sync.Mutex
-	cfg      config.ServiceConfig
-	cmd      *exec.Cmd
-	status   Status
-	writer   *logger.ServiceWriter
-	stopCh   chan struct{}
-	retries  int
-	started  time.Time
+	mu      sync.Mutex
+	cfg     config.ServiceConfig
+	cmd     *exec.Cmd
+	status  Status
+	writer  *logger.ServiceWriter
+	stopCh  chan struct{}
+	retries int
+	started time.Time
 }
 
 // New creates a new ManagedProcess.
@@ -59,16 +59,22 @@ func (mp *ManagedProcess) Start() error {
 
 func (mp *ManagedProcess) startLocked() error {
 	mp.status = StatusStarting
-	cmd := exec.Command(mp.cfg.Executable, mp.cfg.Arguments...)
-	cmd.Dir = mp.cfg.WorkingDirectory
-	cmd.Stdout = mp.writer
-	cmd.Stderr = mp.writer
-	setNoWindow(cmd)
-	mp.cmd = cmd
-	if err := cmd.Start(); err != nil {
+	newCmd := func() (*exec.Cmd, error) {
+		cmd := exec.Command(mp.cfg.Executable, mp.cfg.Arguments...)
+		cmd.Dir = mp.cfg.WorkingDirectory
+		cmd.Stdout = mp.writer
+		cmd.Stderr = mp.writer
+		return cmd, nil
+	}
+	logf := func(format string, args ...interface{}) {
+		fmt.Fprintf(mp.writer, "[manager] "+format+"\n", args...)
+	}
+	cmd, err := startWithJob(newCmd, logf)
+	if err != nil {
 		mp.status = StatusError
 		return fmt.Errorf("start %s: %w", mp.cfg.Name, err)
 	}
+	mp.cmd = cmd
 	mp.status = StatusRunning
 	mp.started = time.Now()
 	mp.retries = 0
