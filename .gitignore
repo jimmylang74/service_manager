@@ -4,6 +4,5 @@ AGENTS.md
 *.bak
 /dist/
 /logs/
-/go.sum
 /web/dist/assets/placeholder.txt
 

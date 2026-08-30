@@ -8,75 +8,18 @@ import (
 	"sync"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
-// Windows API constants. Values verified against golang.org/x/sys/windows
-// (Go 1.22 toolchain sources); kept local to preserve the zero-dependency
-// build.
-const (
-	createNoWindow         = 0x08000000
-	createSuspended        = 0x00000004
-	createBreakawayFromJob = 0x01000000
-
-	jobObjectLimitKillOnJobClose = 0x00002000
-	jobObjectExtendedLimitInfo   = 9
-
-	processSetQuota         = 0x0100
-	processTerminate        = 0x0001
-	processSuspendResume    = 0x0800
-	processQueryInformation = 0x0400
-)
-
-// jobObjectBasicLimitInformation mirrors JOBOBJECT_BASIC_LIMIT_INFORMATION.
-// The layout is 64 bytes on amd64; the manager builds for amd64 only.
-type jobObjectBasicLimitInformation struct {
-	PerProcessUserTimeLimit int64
-	PerJobUserTimeLimit     int64
-	LimitFlags              uint32
-	MinimumWorkingSetSize   uintptr
-	MaximumWorkingSetSize   uintptr
-	ActiveProcessLimit      uint32
-	Affinity                uintptr
-	PriorityClass           uint32
-	SchedulingClass         uint32
-}
-
-// ioCounters mirrors IO_COUNTERS (48 bytes).
-type ioCounters struct {
-	ReadOperationCount  uint64
-	WriteOperationCount uint64
-	OtherOperationCount uint64
-	ReadTransferCount   uint64
-	WriteTransferCount  uint64
-	OtherTransferCount  uint64
-}
-
-// jobObjectExtendedLimitInformation mirrors JOBOBJECT_EXTENDED_LIMIT_INFORMATION
-// (144 bytes on amd64, asserted against the Windows SDK layout). A wrong layout
-// would silently corrupt the job configuration, hence the exact field-for-field
-// copy.
-type jobObjectExtendedLimitInformation struct {
-	BasicLimitInformation jobObjectBasicLimitInformation
-	IoInfo                ioCounters
-	ProcessMemoryLimit    uintptr
-	JobMemoryLimit        uintptr
-	PeakProcessMemoryUsed uintptr
-	PeakJobMemoryUsed     uintptr
-}
-
-var (
-	kernel32             = syscall.NewLazyDLL("kernel32.dll")
-	ntdll                = syscall.NewLazyDLL("ntdll.dll")
-	procCreateJobObjectW = kernel32.NewProc("CreateJobObjectW")
-	procSetInfoJobObject = kernel32.NewProc("SetInformationJobObject")
-	procAssignProcToJob  = kernel32.NewProc("AssignProcessToJobObject")
-	procOpenProcess      = kernel32.NewProc("OpenProcess")
-	procNtResumeProcess  = ntdll.NewProc("NtResumeProcess")
-)
+// procNtResumeProcess resumes every thread of a suspended process.
+// NtResumeProcess is not wrapped by golang.org/x/sys/windows, so it is invoked
+// through x/sys's system DLL loader, which searches System32 only.
+var procNtResumeProcess = windows.NewLazySystemDLL("ntdll.dll").NewProc("NtResumeProcess")
 
 var (
 	jobOnce   sync.Once
-	jobHandle syscall.Handle
+	jobHandle windows.Handle
 	jobErr    error
 )
 
@@ -92,29 +35,29 @@ var (
 // exit. It is created without security attributes, which makes it
 // non-inheritable: no child process can ever hold a duplicate that would keep
 // the job alive after the manager dies.
-func managerJob() (syscall.Handle, error) {
+func managerJob() (windows.Handle, error) {
 	jobOnce.Do(func() {
-		h, _, e1 := procCreateJobObjectW.Call(0, 0) // nil attributes -> non-inheritable, unnamed
-		if h == 0 {
-			jobErr = e1
+		h, err := windows.CreateJobObject(nil, nil) // nil attributes -> non-inheritable, unnamed
+		if err != nil {
+			jobErr = err
 			return
 		}
-		info := jobObjectExtendedLimitInformation{
-			BasicLimitInformation: jobObjectBasicLimitInformation{
-				LimitFlags: jobObjectLimitKillOnJobClose,
+		info := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{
+			BasicLimitInformation: windows.JOBOBJECT_BASIC_LIMIT_INFORMATION{
+				LimitFlags: windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 			},
 		}
-		if ret, _, e1 := procSetInfoJobObject.Call(
+		if _, err := windows.SetInformationJobObject(
 			h,
-			jobObjectExtendedLimitInfo,
+			windows.JobObjectExtendedLimitInformation,
 			uintptr(unsafe.Pointer(&info)),
-			uintptr(unsafe.Sizeof(info)),
-		); ret == 0 {
-			_ = syscall.CloseHandle(syscall.Handle(h))
-			jobErr = e1
+			uint32(unsafe.Sizeof(info)),
+		); err != nil {
+			_ = windows.CloseHandle(h)
+			jobErr = err
 			return
 		}
-		jobHandle = syscall.Handle(h)
+		jobHandle = h
 	})
 	return jobHandle, jobErr
 }
@@ -122,7 +65,7 @@ func managerJob() (syscall.Handle, error) {
 // setNoWindow keeps a console window from flashing when the service starts.
 func setNoWindow(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CreationFlags: createNoWindow,
+		CreationFlags: windows.CREATE_NO_WINDOW,
 	}
 }
 
@@ -156,19 +99,19 @@ func startWithJob(newCmd func() (*exec.Cmd, error), logf func(format string, arg
 	if err := assignToJob(job, h); err != nil {
 		logf("job assignment failed for pid %d (%v), retrying with breakaway", cmd.Process.Pid, err)
 		killSuspended(cmd, h)
-		cmd, h, err = spawnSuspended(newCmd, createBreakawayFromJob)
+		cmd, h, err = spawnSuspended(newCmd, windows.CREATE_BREAKAWAY_FROM_JOB)
 		if err != nil {
 			return nil, err
 		}
 		if err := assignToJob(job, h); err != nil {
 			resumeProcess(h, logf) // best effort: run unconfined instead of hanging
-			_ = syscall.CloseHandle(h)
+			_ = windows.CloseHandle(h)
 			logf("job assignment failed for pid %d (%v); service runs without job confinement", cmd.Process.Pid, err)
 			return cmd, nil
 		}
 	}
 	resumeProcess(h, logf)
-	_ = syscall.CloseHandle(h)
+	_ = windows.CloseHandle(h)
 	return cmd, nil
 }
 
@@ -188,13 +131,13 @@ func plainStart(newCmd func() (*exec.Cmd, error)) (*exec.Cmd, error) {
 // spawnSuspended creates the command suspended with the given extra creation
 // flags and opens an additional process handle with the rights needed for job
 // assignment and resumption.
-func spawnSuspended(newCmd func() (*exec.Cmd, error), extraFlags uint32) (*exec.Cmd, syscall.Handle, error) {
+func spawnSuspended(newCmd func() (*exec.Cmd, error), extraFlags uint32) (*exec.Cmd, windows.Handle, error) {
 	cmd, err := newCmd()
 	if err != nil {
 		return nil, 0, err
 	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CreationFlags: createNoWindow | createSuspended | extraFlags,
+		CreationFlags: windows.CREATE_NO_WINDOW | windows.CREATE_SUSPENDED | extraFlags,
 	}
 	if err := cmd.Start(); err != nil {
 		return nil, 0, err
@@ -213,30 +156,22 @@ func spawnSuspended(newCmd func() (*exec.Cmd, error), extraFlags uint32) (*exec.
 // openProcessHandle opens a process handle with the rights needed to assign
 // the process to a job (PROCESS_SET_QUOTA|PROCESS_TERMINATE) and to resume it
 // (PROCESS_SUSPEND_RESUME).
-func openProcessHandle(pid uint32) (syscall.Handle, error) {
-	h, _, e1 := procOpenProcess.Call(
-		processSetQuota|processTerminate|processSuspendResume|processQueryInformation,
-		0,
-		uintptr(pid),
+func openProcessHandle(pid uint32) (windows.Handle, error) {
+	return windows.OpenProcess(
+		windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE|windows.PROCESS_SUSPEND_RESUME|windows.PROCESS_QUERY_INFORMATION,
+		false,
+		pid,
 	)
-	if h == 0 {
-		return 0, e1
-	}
-	return syscall.Handle(h), nil
 }
 
 // assignToJob moves a process into the given job object.
-func assignToJob(job, process syscall.Handle) error {
-	ret, _, e1 := procAssignProcToJob.Call(uintptr(job), uintptr(process))
-	if ret == 0 {
-		return e1
-	}
-	return nil
+func assignToJob(job, process windows.Handle) error {
+	return windows.AssignProcessToJobObject(job, process)
 }
 
 // resumeProcess resumes a process created with CREATE_SUSPENDED by resuming
 // all of its threads (NtResumeProcess).
-func resumeProcess(h syscall.Handle, logf func(format string, args ...interface{})) {
+func resumeProcess(h windows.Handle, logf func(format string, args ...interface{})) {
 	if ret, _, _ := procNtResumeProcess.Call(uintptr(h)); ret != 0 {
 		logf("NtResumeProcess failed (status 0x%x), process may stay suspended", ret)
 	}
@@ -244,8 +179,8 @@ func resumeProcess(h syscall.Handle, logf func(format string, args ...interface{
 
 // killSuspended terminates and reaps a suspended process whose job assignment
 // failed, so the start can be retried cleanly.
-func killSuspended(cmd *exec.Cmd, h syscall.Handle) {
-	_ = syscall.TerminateProcess(h, 1)
-	_ = syscall.CloseHandle(h)
+func killSuspended(cmd *exec.Cmd, h windows.Handle) {
+	_ = windows.TerminateProcess(h, 1)
+	_ = windows.CloseHandle(h)
 	_ = cmd.Wait()
 }

@@ -16,7 +16,7 @@ A cross-platform service management daemon written in Go. It runs as a native sy
 - **Web UI** — dark-themed SPA for managing services, viewing live logs, and editing config
 - **SSE log streaming** — real-time log tail via Server-Sent Events
 - **YAML configuration** — simple config file, hot-reload on file change
-- **Zero dependencies** — pure Go, no external libraries required
+- **Minimal dependencies** — pure Go, CGO-free; the only external module is `golang.org/x/sys`, used solely for Windows-native APIs (Job Objects, FreeConsole)
 
 ### Project Structure
 
@@ -216,7 +216,7 @@ The built-in web interface provides:
 - **Web 界面** — 暗色主题 SPA，管理服务、查看实时日志、编辑配置
 - **SSE 日志流** — 通过 Server-Sent Events 实时推送日志
 - **YAML 配置** — 简洁配置文件，文件变更自动热重载
-- **零外部依赖** — 纯 Go 实现，无需额外库
+- **精简依赖** — 纯 Go 实现，无需 CGO；唯一外部模块 `golang.org/x/sys`，仅用于 Windows 原生 API（Job Object、FreeConsole）
 
 ### 项目结构
 
