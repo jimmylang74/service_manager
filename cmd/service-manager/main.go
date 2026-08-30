@@ -48,10 +48,16 @@ func main() {
 	flag.Parse()
 
 	// --help / -h / -help is handled inside flag.Parse(): usage is printed to
-	// the console and the process exits before this point. Detach from the
-	// console afterwards so normal runs do not keep a console window open,
-	// unless -console asks to keep it attached.
+	// the console and the process exits before this point. Run invocations from
+	// a prompt re-exec a detached background copy (daemonize) and this launcher
+	// exits so the prompt returns at once; one-shot commands and real SCM runs
+	// stay in-process and must not re-spawn. Then detach from the console
+	// (FreeConsole) so normal runs do not leave a console window open, unless
+	// -console asks to keep it attached.
 	if !console {
+		if !(uninstall || status || install) && !isSCM() && daemonize() {
+			os.Exit(0)
+		}
 		detachConsole()
 	}
 
