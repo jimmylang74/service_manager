@@ -133,17 +133,14 @@ func (s *Server) handleSSELogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
-	cfg := s.mgr.Loader().Get()
-	fmt.Printf("[DEBUG] handleGetConfig: cfg=%v, services=%d\n", cfg != nil, len(cfg.Services))
-	if cfg == nil {
-		writeError(w, http.StatusInternalServerError, "no config loaded")
+	data, err := os.ReadFile(s.mgr.Loader().Path())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "read config: "+err.Error())
 		return
 	}
-	for i, svc := range cfg.Services {
-		fmt.Printf("[DEBUG]   service[%d]: name=%s exe=%s\n", i, svc.Name, svc.Executable)
-	}
+	w.Header().Set("Content-Type", "text/yaml; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, cfg)
+	w.Write(data)
 }
 
 // handleUpdateConfig updates the config and reloads services.

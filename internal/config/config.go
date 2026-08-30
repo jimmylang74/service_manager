@@ -11,24 +11,24 @@ import (
 )
 
 type ServiceConfig struct {
-	Name             string            `yaml:"name"`
-	Executable       string            `yaml:"executable"`
-	Arguments        []string          `yaml:"arguments"`
-	WorkingDirectory string            `yaml:"working_directory"`
-	Environment      map[string]string `yaml:"environment"`
-	Restart          RestartPolicy     `yaml:"restart"`
+	Name             string            `yaml:"name" json:"name"`
+	Executable       string            `yaml:"executable" json:"executable"`
+	Arguments        []string          `yaml:"arguments" json:"arguments"`
+	WorkingDirectory string            `yaml:"working_directory" json:"working_directory"`
+	Environment      map[string]string `yaml:"environment" json:"environment"`
+	Restart          RestartPolicy     `yaml:"restart" json:"restart"`
 }
 
 type RestartPolicy struct {
-	Policy     string `yaml:"policy"`
-	DelaySec   int    `yaml:"delay_seconds"`
-	MaxRetries int    `yaml:"max_retries"`
+	Policy     string `yaml:"policy" json:"policy"`
+	DelaySec   int    `yaml:"delay_seconds" json:"delay_seconds"`
+	MaxRetries int    `yaml:"max_retries" json:"max_retries"`
 }
 
 type ManagerConfig struct {
-	WebPort  int              `yaml:"web_port"`
-	LogDir   string           `yaml:"log_dir"`
-	Services []ServiceConfig  `yaml:"services"`
+	WebPort  int             `yaml:"web_port" json:"web_port"`
+	LogDir   string          `yaml:"log_dir" json:"log_dir"`
+	Services []ServiceConfig `yaml:"services" json:"services"`
 }
 
 type Loader struct {

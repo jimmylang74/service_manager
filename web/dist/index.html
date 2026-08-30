@@ -472,6 +472,18 @@
             return resp.json();
         }
 
+        async function apiText(path, opts = {}) {
+            const resp = await fetch(API + path, {
+                headers: { 'Content-Type': 'application/json' },
+                ...opts
+            });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+                throw new Error(err.error || `HTTP ${resp.status}`);
+            }
+            return resp.text();
+        }
+
         async function loadServices() {
             try {
                 const data = await api('/api/services');
@@ -618,7 +630,8 @@
         }
 
         async function getConfigWithServiceUpdate(updatedSvc) {
-            const cfg = await api('/api/config');
+            const text = await apiText('/api/config');
+            const cfg = yamlParse(text);
             const idx = cfg.services.findIndex(s => s.name === updatedSvc.name);
             if (idx >= 0) {
                 cfg.services[idx] = updatedSvc;
@@ -687,9 +700,10 @@
 
         async function loadConfig() {
             try {
-                const data = await api('/api/config');
-                document.getElementById('configEditor').value = yamlStringify(data);
-                document.getElementById('portInput').value = data.web_port || 7070;
+                const text = await apiText('/api/config');
+                document.getElementById('configEditor').value = text;
+                const m = text.match(/^\s*web_port\s*:\s*(\d+)/m);
+                document.getElementById('portInput').value = m ? m[1] : 7070;
             } catch (e) {
                 console.error('loadConfig:', e);
             }
@@ -729,39 +743,6 @@
             setTimeout(() => el.remove(), 3000);
         }
 
-        function yamlStringify(obj) {
-            let yaml = '';
-            for (const [key, val] of Object.entries(obj)) {
-                if (key === 'services') {
-                    yaml += 'services:\n';
-                    (val || []).forEach(svc => {
-                        yaml += '  - name: ' + svc.name + '\n';
-                        yaml += '    executable: ' + (svc.executable || '') + '\n';
-                        if (svc.arguments && svc.arguments.length) {
-                            yaml += '    arguments:\n';
-                            svc.arguments.forEach(a => yaml += '      - ' + JSON.stringify(a) + '\n');
-                        }
-                        if (svc.working_directory) yaml += '    working_directory: ' + svc.working_directory + '\n';
-                        if (svc.environment && Object.keys(svc.environment).length) {
-                            yaml += '    environment:\n';
-                            for (const [k, v] of Object.entries(svc.environment)) {
-                                yaml += '      ' + k + ': ' + v + '\n';
-                            }
-                        }
-                        if (svc.restart) {
-                            yaml += '    restart:\n';
-                            yaml += '      policy: ' + (svc.restart.policy || 'on-failure') + '\n';
-                            yaml += '      delay_seconds: ' + (svc.restart.delay_seconds || 5) + '\n';
-                            yaml += '      max_retries: ' + (svc.restart.max_retries || 10) + '\n';
-                        }
-                    });
-                } else {
-                    yaml += key + ': ' + JSON.stringify(val) + '\n';
-                }
-            }
-            return yaml;
-        }
-
         function yamlParse(text) {
             const result = { services: [] };
             let current = null;
@@ -792,6 +773,10 @@
                         continue;
                     }
                     if (!current) continue;
+                    if (trimmed.startsWith('- ') && section === 'arguments') {
+                        current.arguments.push(trimmed.slice(2).replace(/^["']|["']$/g, ''));
+                        continue;
+                    }
                     const kv = trimmed.match(/^(\w+):\s*(.*)$/);
                     if (!kv) continue;
                     const [, k, v] = kv;
@@ -804,9 +789,7 @@
                     else if (k === 'restart') section = 'restart';
                     else if (k === 'arguments') section = 'arguments';
                     else if (k === 'environment') section = 'environment';
-                    else if (trimmed.startsWith('- ') && section === 'arguments') {
-                        current.arguments.push(trimmed.slice(2).replace(/^["']|["']$/g, ''));
-                    } else if (k && section === 'environment') {
+                    else if (k && section === 'environment') {
                         current.environment[k] = v;
                     }
                 }
