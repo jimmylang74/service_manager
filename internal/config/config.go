@@ -216,19 +216,18 @@ func parseYAML(data []byte) (*ManagerConfig, error) {
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
+		depth := len(line) - len(strings.TrimLeft(line, " "))
 
 		if strings.HasPrefix(trimmed, "- ") {
 			itemVal := strings.TrimSpace(trimmed[2:])
-			if section == "arguments" && currentService != nil {
+			if section == "arguments" && currentService != nil && depth > 2 {
 				currentService.Arguments = append(currentService.Arguments, unquote(itemVal))
-			} else if section == "services" {
-				if kv := reScalar.FindStringSubmatch(itemVal); kv != nil {
-					svc := ServiceConfig{Name: unquote(kv[2])}
-					cfg.Services = append(cfg.Services, svc)
-					idx := len(cfg.Services) - 1
-					currentService = &cfg.Services[idx]
-					section = "service_body"
-				}
+			} else if kv := reScalar.FindStringSubmatch(itemVal); kv != nil && kv[1] == "name" {
+				svc := ServiceConfig{Name: unquote(kv[2])}
+				cfg.Services = append(cfg.Services, svc)
+				idx := len(cfg.Services) - 1
+				currentService = &cfg.Services[idx]
+				section = "service_body"
 			}
 			continue
 		}
@@ -239,8 +238,6 @@ func parseYAML(data []byte) (*ManagerConfig, error) {
 		}
 		key := kv[1]
 		val := strings.TrimSpace(kv[2])
-
-		depth := len(line) - len(strings.TrimLeft(line, " "))
 
 		if depth == 0 {
 			switch key {
